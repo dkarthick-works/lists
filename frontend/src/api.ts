@@ -174,6 +174,8 @@ export interface Item {
   text: string;
   is_list: boolean;
   updated_at: string;
+  pinned_at: string | null;
+  completed_at: string | null;
 }
 
 export interface Suggestion {
@@ -197,6 +199,10 @@ export const lists = {
   addEntry: (listId: string, text: string, isList: boolean) =>
     request<Item>("POST", `/api/lists/${listId}/entries`, { text, is_list: isList }),
   rename: (id: string, text: string) => request<Item>("PATCH", `/api/items/${id}`, { text }),
+  setPinned: (id: string, pinned: boolean) => request<Item>("PUT", `/api/lists/${id}/pin`, { pinned }),
+  setCompleted: (id: string, completed: boolean) =>
+    request<Item>("PUT", `/api/items/${id}/completed`, { completed }),
+  reorder: (listId: string, ids: string[]) => request<null>("PUT", `/api/lists/${listId}/order`, { ids }),
   makeList: (id: string) => request<Item>("PATCH", `/api/items/${id}`, { is_list: true }),
   remove: (id: string) => request<null>("DELETE", `/api/items/${id}`),
 };

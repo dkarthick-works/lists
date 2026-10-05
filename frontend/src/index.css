@@ -310,6 +310,10 @@ button.row-text {
   border: 1px solid var(--ink);
 }
 
+.menu button {
+  font-size: 1.1rem;
+}
+
 .menu button + button {
   border-left: 1px solid var(--ink);
 }
@@ -412,4 +416,17 @@ button.row-text {
 
 .confirm-actions button {
   flex: 1;
+}
+
+/* Completed entries: greyed out and struck through. */
+.entry.completed .row-text,
+.entry.completed .row-link {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+/* A menu toggle that is currently on. */
+.menu button.on {
+  background: var(--ink);
+  color: var(--paper);
 }

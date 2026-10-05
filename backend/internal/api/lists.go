@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -16,7 +17,11 @@ import (
 	"lists/internal/db"
 )
 
-const maxTextLen = 500
+const (
+	maxTextLen = 500
+	// maxPinned is how many lists a user can pin to the home page.
+	maxPinned = 5
+)
 
 // listLists returns every top-level list.
 func (s *Server) listLists(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +135,114 @@ func (s *Server) createEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, item)
+}
+
+// reorderEntries sets the order of a list's entries to the given id order.
+// Ids that are not entries of this list are ignored.
+func (s *Server) reorderEntries(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserID(r.Context())
+	list, ok := s.loadList(w, r, user)
+	if !ok {
+		return
+	}
+	var body struct {
+		IDs []uuid.UUID `json:"ids"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "ids is required")
+		return
+	}
+
+	err := s.inTx(r.Context(), func(q *db.Queries) error {
+		if err := q.ReorderEntries(r.Context(), db.ReorderEntriesParams{
+			ParentID: &list.ID, UserID: user, Ids: body.IDs,
+		}); err != nil {
+			return err
+		}
+		return q.TouchWithAncestors(r.Context(), list.ID)
+	})
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setPinned pins a top-level list to the home page, or unpins it.
+func (s *Server) setPinned(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Pinned *bool `json:"pinned"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil || body.Pinned == nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	user := auth.UserID(r.Context())
+	if *body.Pinned {
+		n, err := s.q.CountPinned(r.Context(), db.CountPinnedParams{UserID: user, ID: id})
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		if n >= maxPinned {
+			writeError(w, http.StatusConflict, fmt.Sprintf("You can pin at most %d lists. Unpin one first.", maxPinned))
+			return
+		}
+	}
+	item, err := s.q.SetPinned(r.Context(), db.SetPinnedParams{ID: id, UserID: user, Pinned: *body.Pinned})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "list not found")
+		return
+	}
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+// setCompleted marks an entry completed, or reopens it.
+func (s *Server) setCompleted(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Completed *bool `json:"completed"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil || body.Completed == nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	var item db.ListsItem
+	err := s.inTx(r.Context(), func(q *db.Queries) error {
+		var err error
+		item, err = q.SetCompleted(r.Context(), db.SetCompletedParams{
+			ID: id, UserID: auth.UserID(r.Context()), Completed: *body.Completed,
+		})
+		if err != nil {
+			return err
+		}
+		return q.TouchWithAncestors(r.Context(), id)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "entry not found")
+		return
+	}
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
 }
 
 // updateItem changes an item's text, turns an entry into a list, or both.

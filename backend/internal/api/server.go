@@ -43,7 +43,10 @@ func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handl
 		r.Get("/lists/autocomplete", s.autocompleteLists)
 		r.Get("/lists/{id}", s.getList)
 		r.Post("/lists/{id}/entries", s.createEntry)
+		r.Put("/lists/{id}/order", s.reorderEntries)
+		r.Put("/lists/{id}/pin", s.setPinned)
 		r.Patch("/items/{id}", s.updateItem)
+		r.Put("/items/{id}/completed", s.setCompleted)
 		r.Delete("/items/{id}", s.deleteItem)
 	})
 

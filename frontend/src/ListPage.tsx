@@ -124,6 +124,31 @@ export default function ListPage() {
       .catch((e) => setError(e.message));
   };
 
+  // Completed entries sit after the open ones and are not reorderable.
+  const openCount = entries.filter((e) => e.completed_at === null).length;
+
+  // Swaps an open entry with its neighbour. The page updates at once and the menu
+  // stays open on the moved row, so it can be tapped repeatedly; if saving
+  // fails, the list is re-read to show the real order.
+  function move(index: number, by: -1 | 1) {
+    const target = index + by;
+    if (target < 0 || target >= openCount) return;
+    const next = [...entries];
+    [next[index], next[target]] = [next[target], next[index]];
+    setData({ list, ancestors, entries: next });
+    lists
+      .reorder(
+        list.id,
+        next.map((e) => e.id),
+      )
+      .then(() => setError(""))
+      .catch((e) => {
+        setError(e.message);
+        return load();
+      })
+      .catch(() => {});
+  }
+
   function removeEntry(entry: Item) {
     setMenuFor(null);
     // A sub-list gets the same full-page confirmation as any list.
@@ -247,8 +272,8 @@ export default function ListPage() {
 
       {entries.length > 0 && (
         <ul className="rows">
-          {entries.map((entry) => (
-            <li key={entry.id} className="entry">
+          {entries.map((entry, i) => (
+            <li key={entry.id} className={entry.completed_at ? "entry completed" : "entry"}>
               {entry.is_list ? (
                 <Link to={`/lists/${entry.id}`} className="row-link">
                   {entry.text} <span aria-hidden="true">→</span>
@@ -269,6 +294,39 @@ export default function ListPage() {
                 <>
                   <div className="menu-backdrop" onClick={() => setMenuFor(null)} />
                   <div className="menu" role="menu" onKeyDown={(e) => e.key === "Escape" && setMenuFor(null)}>
+                    <button
+                      role="menuitem"
+                      className={entry.completed_at ? "icon on" : "icon"}
+                      aria-pressed={entry.completed_at !== null}
+                      aria-label={entry.completed_at ? "Mark as not completed" : "Mark as completed"}
+                      title={entry.completed_at ? "Mark as not completed" : "Mark as completed"}
+                      onClick={() => {
+                        setMenuFor(null);
+                        mutate(() => lists.setCompleted(entry.id, entry.completed_at === null));
+                      }}
+                    >
+                      ✓
+                    </button>
+                    <button
+                      role="menuitem"
+                      className="icon"
+                      aria-label="Move up"
+                      title="Move up"
+                      disabled={entry.completed_at !== null || i === 0}
+                      onClick={() => move(i, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      role="menuitem"
+                      className="icon"
+                      aria-label="Move down"
+                      title="Move down"
+                      disabled={entry.completed_at !== null || i >= openCount - 1}
+                      onClick={() => move(i, 1)}
+                    >
+                      ↓
+                    </button>
                     {!entry.is_list && (
                       <button
                         role="menuitem"

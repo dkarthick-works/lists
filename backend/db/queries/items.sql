@@ -4,8 +4,9 @@ WHERE user_id = $1 AND parent_id IS NULL
 ORDER BY lower(text), created_at;
 
 -- name: ListRecent :many
+-- Pinned lists have their own section on the home page, so they are left out.
 SELECT * FROM lists.items
-WHERE user_id = $1 AND parent_id IS NULL
+WHERE user_id = $1 AND parent_id IS NULL AND pinned_at IS NULL
 ORDER BY updated_at DESC
 LIMIT 5;
 
@@ -30,9 +31,10 @@ SELECT * FROM lists.items
 WHERE id = $1 AND user_id = $2;
 
 -- name: ListEntries :many
+-- Open entries in their manual order, then completed ones, oldest completion first.
 SELECT * FROM lists.items
 WHERE parent_id = $1 AND user_id = $2
-ORDER BY created_at, id;
+ORDER BY completed_at NULLS FIRST, position, created_at, id;
 
 -- name: ListAncestors :many
 WITH RECURSIVE chain AS (
@@ -49,9 +51,20 @@ SELECT id, text FROM chain
 ORDER BY depth DESC;
 
 -- name: CreateItem :one
-INSERT INTO lists.items (user_id, parent_id, text, is_list)
-VALUES ($1, $2, $3, $4)
+-- New entries go to the end of their list.
+INSERT INTO lists.items (user_id, parent_id, text, is_list, position)
+VALUES (
+    $1, $2, $3, $4,
+    COALESCE((SELECT max(s.position) + 1 FROM lists.items s WHERE s.parent_id = $2), 0)
+)
 RETURNING *;
+
+-- name: ReorderEntries :exec
+-- Positions the given entries of one list in the order of the id array.
+UPDATE lists.items i
+SET position = o.ord
+FROM unnest(sqlc.arg(ids)::uuid[]) WITH ORDINALITY AS o(id, ord)
+WHERE i.id = o.id AND i.parent_id = sqlc.arg(parent_id) AND i.user_id = sqlc.arg(user_id);
 
 -- name: UpdateItemText :one
 UPDATE lists.items
@@ -78,4 +91,26 @@ WHERE id IN (SELECT id FROM chain);
 UPDATE lists.items
 SET is_list = true, updated_at = now()
 WHERE id = $1 AND user_id = $2
+RETURNING *;
+
+-- name: SetPinned :one
+-- Only top-level lists can be pinned. Re-pinning keeps the original pin time,
+-- and pinning does not count as an edit.
+UPDATE lists.items
+SET pinned_at = CASE WHEN sqlc.arg(pinned)::boolean THEN COALESCE(pinned_at, now()) END
+WHERE id = $1 AND user_id = $2 AND parent_id IS NULL AND is_list
+RETURNING *;
+
+-- name: CountPinned :one
+-- Pinned lists other than the given one.
+SELECT count(*) FROM lists.items
+WHERE user_id = $1 AND pinned_at IS NOT NULL AND id <> $2;
+
+-- name: SetCompleted :one
+-- Only entries (items inside a list) can be completed. Completing again keeps
+-- the original completion time.
+UPDATE lists.items
+SET completed_at = CASE WHEN sqlc.arg(completed)::boolean THEN COALESCE(completed_at, now()) END,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2 AND parent_id IS NOT NULL
 RETURNING *;

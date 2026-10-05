@@ -43,6 +43,10 @@ Safari does not, so in Safari a reload logs you out unless you serve over HTTPS.
 One table, `lists.items`, forms a tree: a list is an item with `is_list = true`, an entry
 is an item whose `parent_id` is a list, and an entry can itself be a list. Editing
 anything bumps `updated_at` on every list above it, which drives "recently edited".
+Entries are ordered by `position` within their list; new entries go to the end.
+Completed entries (`completed_at`) sort after the open ones but keep their position.
+Top-level lists can be pinned (`pinned_at`); pinned lists get their own section on the home
+page and are left out of "recently edited".
 
 ## Search
 

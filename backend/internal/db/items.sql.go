@@ -59,10 +59,31 @@ func (q *Queries) AutocompleteLists(ctx context.Context, arg AutocompleteListsPa
 	return items, nil
 }
 
+const countPinned = `-- name: CountPinned :one
+SELECT count(*) FROM lists.items
+WHERE user_id = $1 AND pinned_at IS NOT NULL AND id <> $2
+`
+
+type CountPinnedParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	ID     uuid.UUID `json:"id"`
+}
+
+// Pinned lists other than the given one.
+func (q *Queries) CountPinned(ctx context.Context, arg CountPinnedParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPinned, arg.UserID, arg.ID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createItem = `-- name: CreateItem :one
-INSERT INTO lists.items (user_id, parent_id, text, is_list)
-VALUES ($1, $2, $3, $4)
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at
+INSERT INTO lists.items (user_id, parent_id, text, is_list, position)
+VALUES (
+    $1, $2, $3, $4,
+    COALESCE((SELECT max(s.position) + 1 FROM lists.items s WHERE s.parent_id = $2), 0)
+)
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
 `
 
 type CreateItemParams struct {
@@ -72,6 +93,7 @@ type CreateItemParams struct {
 	IsList   bool       `json:"is_list"`
 }
 
+// New entries go to the end of their list.
 func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (ListsItem, error) {
 	row := q.db.QueryRow(ctx, createItem,
 		arg.UserID,
@@ -88,6 +110,9 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (ListsIt
 		&i.IsList,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Position,
+		&i.PinnedAt,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -111,7 +136,7 @@ func (q *Queries) DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, 
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at FROM lists.items
 WHERE id = $1 AND user_id = $2
 `
 
@@ -131,6 +156,9 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (ListsItem, er
 		&i.IsList,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Position,
+		&i.PinnedAt,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -181,9 +209,9 @@ func (q *Queries) ListAncestors(ctx context.Context, arg ListAncestorsParams) ([
 }
 
 const listEntries = `-- name: ListEntries :many
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at FROM lists.items
 WHERE parent_id = $1 AND user_id = $2
-ORDER BY created_at, id
+ORDER BY completed_at NULLS FIRST, position, created_at, id
 `
 
 type ListEntriesParams struct {
@@ -191,6 +219,7 @@ type ListEntriesParams struct {
 	UserID   uuid.UUID  `json:"user_id"`
 }
 
+// Open entries in their manual order, then completed ones, oldest completion first.
 func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]ListsItem, error) {
 	rows, err := q.db.Query(ctx, listEntries, arg.ParentID, arg.UserID)
 	if err != nil {
@@ -208,6 +237,9 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Lis
 			&i.IsList,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Position,
+			&i.PinnedAt,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -220,12 +252,13 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Lis
 }
 
 const listRecent = `-- name: ListRecent :many
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at FROM lists.items
-WHERE user_id = $1 AND parent_id IS NULL
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at FROM lists.items
+WHERE user_id = $1 AND parent_id IS NULL AND pinned_at IS NULL
 ORDER BY updated_at DESC
 LIMIT 5
 `
 
+// Pinned lists have their own section on the home page, so they are left out.
 func (q *Queries) ListRecent(ctx context.Context, userID uuid.UUID) ([]ListsItem, error) {
 	rows, err := q.db.Query(ctx, listRecent, userID)
 	if err != nil {
@@ -243,6 +276,9 @@ func (q *Queries) ListRecent(ctx context.Context, userID uuid.UUID) ([]ListsItem
 			&i.IsList,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Position,
+			&i.PinnedAt,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -255,7 +291,7 @@ func (q *Queries) ListRecent(ctx context.Context, userID uuid.UUID) ([]ListsItem
 }
 
 const listTopLevel = `-- name: ListTopLevel :many
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at FROM lists.items
 WHERE user_id = $1 AND parent_id IS NULL
 ORDER BY lower(text), created_at
 `
@@ -277,6 +313,9 @@ func (q *Queries) ListTopLevel(ctx context.Context, userID uuid.UUID) ([]ListsIt
 			&i.IsList,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Position,
+			&i.PinnedAt,
+			&i.CompletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -292,7 +331,7 @@ const makeItemList = `-- name: MakeItemList :one
 UPDATE lists.items
 SET is_list = true, updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
 `
 
 type MakeItemListParams struct {
@@ -311,6 +350,95 @@ func (q *Queries) MakeItemList(ctx context.Context, arg MakeItemListParams) (Lis
 		&i.IsList,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Position,
+		&i.PinnedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const reorderEntries = `-- name: ReorderEntries :exec
+UPDATE lists.items i
+SET position = o.ord
+FROM unnest($3::uuid[]) WITH ORDINALITY AS o(id, ord)
+WHERE i.id = o.id AND i.parent_id = $1 AND i.user_id = $2
+`
+
+type ReorderEntriesParams struct {
+	ParentID *uuid.UUID  `json:"parent_id"`
+	UserID   uuid.UUID   `json:"user_id"`
+	Ids      []uuid.UUID `json:"ids"`
+}
+
+// Positions the given entries of one list in the order of the id array.
+func (q *Queries) ReorderEntries(ctx context.Context, arg ReorderEntriesParams) error {
+	_, err := q.db.Exec(ctx, reorderEntries, arg.ParentID, arg.UserID, arg.Ids)
+	return err
+}
+
+const setCompleted = `-- name: SetCompleted :one
+UPDATE lists.items
+SET completed_at = CASE WHEN $3::boolean THEN COALESCE(completed_at, now()) END,
+    updated_at = now()
+WHERE id = $1 AND user_id = $2 AND parent_id IS NOT NULL
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
+`
+
+type SetCompletedParams struct {
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Completed bool      `json:"completed"`
+}
+
+// Only entries (items inside a list) can be completed. Completing again keeps
+// the original completion time.
+func (q *Queries) SetCompleted(ctx context.Context, arg SetCompletedParams) (ListsItem, error) {
+	row := q.db.QueryRow(ctx, setCompleted, arg.ID, arg.UserID, arg.Completed)
+	var i ListsItem
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ParentID,
+		&i.Text,
+		&i.IsList,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Position,
+		&i.PinnedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const setPinned = `-- name: SetPinned :one
+UPDATE lists.items
+SET pinned_at = CASE WHEN $3::boolean THEN COALESCE(pinned_at, now()) END
+WHERE id = $1 AND user_id = $2 AND parent_id IS NULL AND is_list
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
+`
+
+type SetPinnedParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+	Pinned bool      `json:"pinned"`
+}
+
+// Only top-level lists can be pinned. Re-pinning keeps the original pin time,
+// and pinning does not count as an edit.
+func (q *Queries) SetPinned(ctx context.Context, arg SetPinnedParams) (ListsItem, error) {
+	row := q.db.QueryRow(ctx, setPinned, arg.ID, arg.UserID, arg.Pinned)
+	var i ListsItem
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ParentID,
+		&i.Text,
+		&i.IsList,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Position,
+		&i.PinnedAt,
+		&i.CompletedAt,
 	)
 	return i, err
 }
@@ -336,7 +464,7 @@ const updateItemText = `-- name: UpdateItemText :one
 UPDATE lists.items
 SET text = $3, updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
 `
 
 type UpdateItemTextParams struct {
@@ -356,6 +484,9 @@ func (q *Queries) UpdateItemText(ctx context.Context, arg UpdateItemTextParams) 
 		&i.IsList,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Position,
+		&i.PinnedAt,
+		&i.CompletedAt,
 	)
 	return i, err
 }

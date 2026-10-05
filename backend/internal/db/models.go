@@ -11,11 +11,14 @@ import (
 )
 
 type ListsItem struct {
-	ID        uuid.UUID  `json:"id"`
-	UserID    uuid.UUID  `json:"user_id"`
-	ParentID  *uuid.UUID `json:"parent_id"`
-	Text      string     `json:"text"`
-	IsList    bool       `json:"is_list"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	ParentID    *uuid.UUID `json:"parent_id"`
+	Text        string     `json:"text"`
+	IsList      bool       `json:"is_list"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	Position    int32      `json:"position"`
+	PinnedAt    *time.Time `json:"pinned_at"`
+	CompletedAt *time.Time `json:"completed_at"`
 }
