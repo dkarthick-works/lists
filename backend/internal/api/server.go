@@ -3,9 +3,9 @@ package api
 
 import (
 	"encoding/json"
+	"io/fs"
+	"mime"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -14,6 +14,7 @@ import (
 
 	"lists/internal/auth"
 	"lists/internal/db"
+	"lists/web"
 )
 
 type Server struct {
@@ -21,7 +22,7 @@ type Server struct {
 	q    *db.Queries
 }
 
-func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handler, staticDir string) http.Handler {
+func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handler) http.Handler {
 	s := &Server{pool: pool, q: db.New(pool)}
 
 	r := chi.NewRouter()
@@ -33,6 +34,8 @@ func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handl
 	r.Handle("/api/auth/*", authProxy)
 
 	r.Route("/api", func(r chi.Router) {
+		// Per-user data: keep it out of every HTTP cache.
+		r.Use(middleware.SetHeader("Cache-Control", "no-store"))
 		r.Use(verifier.Middleware)
 		r.Get("/lists", s.listLists)
 		r.Post("/lists", s.createList)
@@ -44,26 +47,45 @@ func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handl
 		r.Delete("/items/{id}", s.deleteItem)
 	})
 
-	if staticDir != "" {
-		r.NotFound(spa(staticDir))
+	if web.FS != nil {
+		r.NotFound(spaHandler(web.FS).ServeHTTP)
 	}
 	return r
 }
 
-// spa serves the built frontend, falling back to index.html for client routes.
-func spa(dir string) http.HandlerFunc {
-	files := http.FileServer(http.Dir(dir))
-	return func(w http.ResponseWriter, r *http.Request) {
+// spaHandler serves the embedded frontend, falling back to index.html for
+// client-side routes.
+func spaHandler(fsys fs.FS) http.Handler {
+	// Not in Go's built-in table, and the runtime image ships no mime.types.
+	mime.AddExtensionType(".webmanifest", "application/manifest+json")
+	fserver := http.FileServer(http.FS(fsys))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			writeError(w, http.StatusNotFound, "not found")
 			return
 		}
-		if info, err := os.Stat(filepath.Join(dir, filepath.Clean("/"+r.URL.Path))); err != nil || info.IsDir() {
-			http.ServeFile(w, r, filepath.Join(dir, "index.html"))
-			return
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if name == "" {
+			name = "index.html"
 		}
-		files.ServeHTTP(w, r)
-	}
+		if f, err := fsys.Open(name); err != nil {
+			name = "index.html"
+			r.URL.Path = "/"
+		} else {
+			f.Close()
+		}
+
+		// HTML and service-worker entry points must be revalidated so a new
+		// deployment is picked up immediately. Vite's content-hashed assets are
+		// immutable and safe to cache for a year.
+		switch {
+		case name == "index.html", name == "sw.js", name == "registerSW.js":
+			w.Header().Set("Cache-Control", "no-cache")
+		case strings.HasPrefix(name, "assets/"):
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		fserver.ServeHTTP(w, r)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

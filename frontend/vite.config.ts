@@ -7,14 +7,20 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      // The png glob below already precaches the icons.
+      includeManifestIcons: false,
+      // The worker only precaches the app shell. It registers no runtime
+      // routes, so /api — including the auth calls that set and rotate the
+      // refresh cookie — always goes straight to the network, never a cache.
       workbox: {
         // Client-side routes resolve to index.html, but never the JSON API.
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api/],
         globPatterns: ["**/*.{js,css,html,svg,png}"],
+        cleanupOutdatedCaches: true,
       },
-      includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {
+        id: "/",
         name: "Lists",
         short_name: "Lists",
         description: "Simple nested lists.",

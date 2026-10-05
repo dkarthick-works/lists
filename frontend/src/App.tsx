@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { refresh, setSignedOutHandler } from "./api";
+import { refresh, setAuthChangeHandler } from "./api";
 import Home from "./Home";
 import ListPage from "./ListPage";
 import Login from "./Login";
 import Profile from "./Profile";
 
 export default function App() {
-  // null while the stored session is being restored.
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  // "unavailable": the session could not be checked (offline, server down).
+  // That is not a logout, so the login form is not shown for it.
+  const [session, setSession] = useState<"loading" | "in" | "out" | "unavailable">("loading");
 
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
@@ -22,13 +23,41 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  useEffect(() => {
-    setSignedOutHandler(() => setSignedIn(false));
-    refresh().then(setSignedIn);
+  const restore = useCallback(() => {
+    setSession("loading");
+    refresh().then((r) =>
+      // A broadcast from another tab may already have signed this one in.
+      setSession((cur) => (cur !== "loading" ? cur : r === "ok" ? "in" : r === "expired" ? "out" : "unavailable")),
+    );
   }, []);
 
-  if (signedIn === null) return <main className="page muted">Loading…</main>;
-  if (!signedIn) return <Login onLogin={() => setSignedIn(true)} />;
+  useEffect(() => {
+    setAuthChangeHandler(setSession);
+    restore();
+  }, [restore]);
+
+  // The server was unreachable at startup: try again once the network is back.
+  useEffect(() => {
+    if (session !== "unavailable") return;
+    window.addEventListener("online", restore);
+    return () => window.removeEventListener("online", restore);
+  }, [session, restore]);
+
+  if (session === "loading") return <main className="page muted">Loading…</main>;
+  if (session === "unavailable") {
+    return (
+      <main className="page narrow">
+        <h1>Lists</h1>
+        <p>Can't reach the server. You are still signed in.</p>
+        <div>
+          <button className="primary" onClick={restore}>
+            Try again
+          </button>
+        </div>
+      </main>
+    );
+  }
+  if (session === "out") return <Login onLogin={() => setSession("in")} />;
 
   return (
     <>
@@ -53,7 +82,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/lists/:id" element={<ListPage />} />
-          <Route path="/profile" element={<Profile onLogout={() => setSignedIn(false)} />} />
+          <Route path="/profile" element={<Profile onLogout={() => setSession("out")} />} />
           <Route path="*" element={<p>Not found.</p>} />
         </Routes>
       </main>

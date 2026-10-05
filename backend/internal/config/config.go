@@ -10,8 +10,6 @@ type Config struct {
 	DatabaseURL   string
 	Port          string
 	GoauthBaseURL string
-	// StaticDir, when set, is a built frontend served for every non-API route.
-	StaticDir string
 }
 
 func Load() (Config, error) {
@@ -19,7 +17,6 @@ func Load() (Config, error) {
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
 		Port:          os.Getenv("PORT"),
 		GoauthBaseURL: os.Getenv("GOAUTH_BASE_URL"),
-		StaticDir:     os.Getenv("STATIC_DIR"),
 	}
 	if c.Port == "" {
 		c.Port = "8082"

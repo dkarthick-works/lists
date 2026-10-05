@@ -47,7 +47,7 @@ func main() {
 	}
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           api.NewRouter(pool, auth.NewVerifier(cfg.GoauthBaseURL), authProxy, cfg.StaticDir),
+		Handler:           api.NewRouter(pool, auth.NewVerifier(cfg.GoauthBaseURL), authProxy),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("listening on :%s", cfg.Port)

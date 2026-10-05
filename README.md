@@ -49,5 +49,13 @@ Prefix matches rank first. A partial GIN trigram index on list titles backs both
 
 ## Production
 
-`npm run build` in `frontend/`, then run the server with `STATIC_DIR=../frontend/dist`
-to serve the app and API from one origin.
+One image serves both the API and the frontend: the Dockerfile builds the frontend, then
+compiles the Go server with `-tags prod`, which embeds `frontend/dist` into the binary.
+
+```bash
+cp .env.example .env      # set DATABASE_URL to a host reachable from the container
+docker compose up -d --build
+```
+
+The app listens on port 8082 in the container, published on host port 8085, and joins
+the external `coolify` network. The database must already be provisioned (see Database).
