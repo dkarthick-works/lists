@@ -1,5 +1,5 @@
-// Package auth identifies the caller by asking Goauth who an access token
-// belongs to, and proxies the browser's auth calls through to Goauth.
+// Package auth identifies the caller from a Goauth access token and proxies
+// the browser's auth calls through to Goauth.
 package auth
 
 import (
@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -21,7 +22,7 @@ const userKey ctxKey = iota
 var ErrUnauthorized = errors.New("unauthorized")
 
 // cacheTTL bounds how long a token stays accepted after Goauth last vouched
-// for it. Access tokens live 15 minutes, so this adds at most a minute.
+// for it (fallback mode only). Access tokens live 15 minutes, so this adds at most a minute.
 const cacheTTL = time.Minute
 
 type cached struct {
@@ -30,7 +31,12 @@ type cached struct {
 }
 
 // Verifier resolves access tokens to user ids via Goauth's GET /auth/me.
+// Verifier resolves access tokens to user ids. With the Goauth signing secret
+// it checks the token itself; without one it falls back to asking Goauth's
+// GET /auth/me, which costs a network round trip per token per minute.
 type Verifier struct {
+	secret []byte
+
 	meURL  string
 	client *http.Client
 
@@ -38,15 +44,41 @@ type Verifier struct {
 	cache map[string]cached
 }
 
-func NewVerifier(goauthBaseURL string) *Verifier {
+// NewVerifier takes Goauth's JWT_SECRET; pass "" to verify through Goauth instead.
+func NewVerifier(goauthBaseURL, jwtSecret string) *Verifier {
 	return &Verifier{
+		secret: []byte(jwtSecret),
 		meURL:  strings.TrimRight(goauthBaseURL, "/") + "/auth/me",
 		client: &http.Client{Timeout: 10 * time.Second},
 		cache:  map[string]cached{},
 	}
 }
 
+// Local reports whether tokens are verified in-process.
+func (v *Verifier) Local() bool { return len(v.secret) > 0 }
+
+// verifyLocal checks an HS256 token's signature and expiry and returns its
+// subject, which Goauth sets to the user id.
+func (v *Verifier) verifyLocal(token string) (uuid.UUID, error) {
+	claims := jwt.RegisteredClaims{}
+	_, err := jwt.ParseWithClaims(token, &claims, func(*jwt.Token) (any, error) {
+		return v.secret, nil
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
+	if err != nil {
+		return uuid.Nil, ErrUnauthorized
+	}
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, ErrUnauthorized
+	}
+	return id, nil
+}
+
 func (v *Verifier) lookup(ctx context.Context, token string) (uuid.UUID, error) {
+	if v.Local() {
+		return v.verifyLocal(token)
+	}
+
 	now := time.Now()
 	v.mu.Lock()
 	c, ok := v.cache[token]

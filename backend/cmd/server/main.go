@@ -45,9 +45,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	verifier := auth.NewVerifier(cfg.GoauthBaseURL, cfg.JWTSecret)
+	if !verifier.Local() {
+		log.Print("JWT_SECRET is not set: verifying every token through Goauth (slow)")
+	}
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           api.NewRouter(pool, auth.NewVerifier(cfg.GoauthBaseURL), authProxy),
+		Handler:           api.NewRouter(pool, verifier, authProxy),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("listening on :%s", cfg.Port)
