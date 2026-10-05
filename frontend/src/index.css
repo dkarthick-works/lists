@@ -1,0 +1,402 @@
+/* Black and white only, square corners everywhere. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-radius: 0 !important;
+}
+
+:root {
+  --ink: #000;
+  --paper: #fff;
+  color-scheme: light;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--ink);
+}
+
+.muted {
+  opacity: 0.55;
+}
+
+/* Layout */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--paper);
+  border-bottom: 1px solid var(--ink);
+  padding-top: env(safe-area-inset-top);
+}
+
+.bar > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 0.5rem 1rem;
+}
+
+.bar button {
+  width: 2.75rem;
+  padding: 0;
+  font-size: 1.1rem;
+}
+
+.brand {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* Side nav: slides over the page from the right, below the top bar. */
+.sidenav {
+  position: fixed;
+  top: calc(3.75rem + 1px + env(safe-area-inset-top));
+  bottom: 0;
+  right: 0;
+  z-index: 2;
+  width: min(16rem, 80vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border-left: 1px solid var(--ink);
+  padding-right: env(safe-area-inset-right);
+}
+
+.sidenav[hidden] {
+  display: none;
+}
+
+.sidenav a {
+  padding: 0.9rem 1rem;
+  text-decoration: none;
+  border-bottom: 1px solid var(--ink);
+}
+
+.sidenav a.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: rgb(255 255 255 / 0.7);
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.25rem 1rem calc(2rem + env(safe-area-inset-bottom));
+}
+
+.page.narrow {
+  max-width: 24rem;
+  padding-top: 12vh;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Controls — 16px text so iOS does not zoom on focus, 44px tap targets. */
+input,
+button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  min-height: 2.75rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input {
+  width: 100%;
+  min-width: 0;
+  padding: 0 0.75rem;
+}
+
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+button {
+  padding: 0 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+
+button.primary {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.link {
+  border: 0;
+  padding: 0;
+  min-height: 2.75rem;
+  text-decoration: underline;
+}
+
+/* Focus thickens the existing border instead of drawing a second line around it. */
+:focus-visible {
+  outline: 1px solid var(--ink);
+  outline-offset: 0;
+}
+
+button.primary:focus-visible {
+  outline-color: var(--paper);
+  outline-offset: -3px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+}
+
+/* Rows */
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--ink);
+}
+
+.rows li + li {
+  border-top: 1px solid var(--ink);
+}
+
+.row-link,
+.row-text {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  padding: 0.7rem 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.row-link {
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.title h1 {
+  min-width: 0;
+}
+
+button.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  padding: 0;
+  border: 0;
+}
+
+/* The list name is a plain-looking button: tap it to rename. */
+button.rename {
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  font-weight: inherit;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.title input {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* Entry rows are buttons that look like text until tapped. */
+button.row-text {
+  width: 100%;
+  border: 0;
+  min-height: 0;
+  text-align: left;
+  white-space: normal;
+  cursor: text;
+}
+
+.entry {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.entry .row-input {
+  flex: 1;
+  border: 0;
+}
+
+.entry > button.icon {
+  font-size: 1.25rem;
+}
+
+/* The ⋯ menu drops down from the right end of its row. */
+.menu {
+  position: absolute;
+  top: 100%;
+  right: -1px;
+  z-index: 2;
+  display: flex;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+}
+
+.menu button + button {
+  border-left: 1px solid var(--ink);
+}
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+
+.crumbs {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+@media (hover: hover) {
+  .row-link:hover,
+  button:not(.primary):not(.link):not(.rename):not(.row-text):hover {
+    background: var(--ink);
+    color: var(--paper);
+  }
+}
+
+/* Chat-style composer: fixed to the bottom edge, aligned with the page column. */
+.composer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--paper);
+  border-top: 1px solid var(--ink);
+}
+
+.composer > div {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.composer button {
+  width: 2.75rem;
+  padding: 0;
+  font-size: 1.25rem;
+}
+
+/* Keep the last rows clear of the composer. */
+.page:has(.composer) {
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}
+
+/* Search autocomplete: a dropdown hanging off the bottom edge of the field. */
+.search {
+  position: relative;
+}
+
+.suggestions {
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.suggestions li {
+  padding: 0.7rem 0.75rem;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.suggestions li.muted {
+  cursor: default;
+}
+
+.suggestions li + li {
+  border-top: 1px solid var(--ink);
+}
+
+.suggestions .parent {
+  opacity: 0.55;
+}
+
+.suggestions li[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}

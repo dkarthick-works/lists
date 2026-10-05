@@ -1,0 +1,9 @@
+# Hot reload for development: run `air` in this directory.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/server ./cmd/server"
+bin = "./tmp/server"
+include_ext = ["go", "sql"]
+exclude_dir = ["tmp"]
