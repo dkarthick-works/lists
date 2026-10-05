@@ -1,13 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Composer from "./Composer";
 import { ApiError, lists, type Item, type ListDetail } from "./api";
+
+// Router state that puts a list page into its delete confirmation.
+const CONFIRM_DELETE = { confirmDelete: true };
 
 function TrashIcon() {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <path d="M4 6.5h16M9 6.5v-3h6v3M6 6.5l1 14h10l1-14M10 10.5v6M14 10.5v6" strokeLinejoin="miter" />
     </svg>
+  );
+}
+
+// A button that only acts on two taps within 300ms, so a stray tap does
+// nothing. Timed by hand because touch browsers do not all fire dblclick.
+// Keyboard activation (e.detail === 0) is deliberate, so it acts at once.
+function DoubleTapButton({
+  onDoubleTap,
+  ...props
+}: { onDoubleTap: () => void } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick">) {
+  const lastTap = useRef(0);
+  return (
+    <button
+      {...props}
+      onClick={(e) => {
+        const now = Date.now();
+        const double = now - lastTap.current < 300;
+        lastTap.current = now;
+        if (double || e.detail === 0) onDoubleTap();
+      }}
+    />
   );
 }
 
@@ -70,6 +94,7 @@ function EntryRow({ entry, onChange }: { entry: Item; onChange: (action: () => P
 export default function ListPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const confirmingDelete = useLocation().state?.confirmDelete === true;
   const [data, setData] = useState<ListDetail | null>(null);
   const [error, setError] = useState("");
   // null unless the list name is being edited.
@@ -101,11 +126,12 @@ export default function ListPage() {
 
   function removeEntry(entry: Item) {
     setMenuFor(null);
-    if (entry.is_list && !confirm(`Delete "${entry.text}" and everything in it?`)) return;
-    mutate(() => lists.remove(entry.id));
+    // A sub-list gets the same full-page confirmation as any list.
+    if (entry.is_list) navigate(`/lists/${entry.id}`, { state: CONFIRM_DELETE });
+    else mutate(() => lists.remove(entry.id));
   }
 
-  // Tapping the name edits it in place; leaving the field or Enter saves.
+  // Double-tapping the name edits it in place; leaving the field or Enter saves.
   function saveName() {
     const name = draft?.trim();
     setDraft(null);
@@ -116,12 +142,48 @@ export default function ListPage() {
 
   // Deleting returns to the parent list, or home for a top-level list.
   function removeList() {
-    if (!confirm(`Delete "${list.text}" and everything in it?`)) return;
     const parent = ancestors[ancestors.length - 1];
     lists
       .remove(list.id)
-      .then(() => navigate(parent ? `/lists/${parent.id}` : "/"))
+      .then(() => navigate(parent ? `/lists/${parent.id}` : "/", { replace: true }))
       .catch((e) => setError(e.message));
+  }
+
+  // The confirmation takes over the page; it is a history entry, so Back cancels.
+  if (confirmingDelete) {
+    const nested = entries.filter((e) => e.is_list);
+    const plain = entries.length - nested.length;
+    return (
+      <>
+        <h1>Delete "{list.text}"?</h1>
+        <p>This deletes the list and everything in it. It cannot be undone.</p>
+        {error && <p role="alert">{error}</p>}
+        {nested.length > 0 && (
+          <section>
+            <h2>Lists inside that will be deleted</h2>
+            <ul className="rows">
+              {nested.map((e) => (
+                <li key={e.id}>
+                  <span className="row-text">{e.text}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {plain > 0 && (
+          <p className="muted">
+            {nested.length > 0 ? "Plus " : ""}
+            {plain} {plain === 1 ? "entry" : "entries"}.
+          </p>
+        )}
+        <div className="confirm-actions">
+          <button className="primary" onClick={removeList}>
+            Delete
+          </button>
+          <button onClick={() => navigate(-1)}>Cancel</button>
+        </div>
+      </>
+    );
   }
 
   return (
@@ -141,16 +203,25 @@ export default function ListPage() {
         {draft === null ? (
           <>
             <h1>
-              <button className="rename" title="Rename" onClick={() => {
+              <DoubleTapButton
+                className="rename"
+                title="Double-tap to rename"
+                onDoubleTap={() => {
                   cancelled.current = false;
                   setDraft(list.text);
-                }}>
+                }}
+              >
                 {list.text}
-              </button>
+              </DoubleTapButton>
             </h1>
-            <button className="icon" aria-label="Delete list" title="Delete list" onClick={removeList}>
+            <DoubleTapButton
+              className="icon"
+              aria-label="Delete list"
+              title="Double-tap to delete list"
+              onDoubleTap={() => navigate(`/lists/${list.id}`, { state: CONFIRM_DELETE })}
+            >
               <TrashIcon />
-            </button>
+            </DoubleTapButton>
           </>
         ) : (
           <input
@@ -216,15 +287,15 @@ export default function ListPage() {
                         <ListIcon />
                       </button>
                     )}
-                    <button
+                    <DoubleTapButton
                       role="menuitem"
                       className="icon"
                       aria-label="Delete"
-                      title="Delete"
-                      onClick={() => removeEntry(entry)}
+                      title="Double-tap to delete"
+                      onDoubleTap={() => removeEntry(entry)}
                     >
                       <TrashIcon />
-                    </button>
+                    </DoubleTapButton>
                   </div>
                 </>
               )}

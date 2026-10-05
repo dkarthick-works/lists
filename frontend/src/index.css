@@ -72,6 +72,10 @@ a {
   width: 2.75rem;
   padding: 0;
   font-size: 1.1rem;
+  /* Double-tap buttons should act, not select text or zoom the page. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
 }
 
 .brand {
@@ -253,7 +257,7 @@ button.icon {
   border: 0;
 }
 
-/* The list name is a plain-looking button: tap it to rename. */
+/* The list name is a plain-looking button: double-tap it to rename. */
 button.rename {
   border: 0;
   padding: 0;
@@ -262,7 +266,7 @@ button.rename {
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
-  cursor: text;
+  cursor: default;
 }
 
 .title input {
@@ -399,4 +403,13 @@ button.row-text {
 .suggestions li[aria-selected="true"] {
   background: var(--ink);
   color: var(--paper);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.confirm-actions button {
+  flex: 1;
 }
