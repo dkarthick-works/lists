@@ -6,4 +6,6 @@ tmp_dir = "tmp"
 cmd = "go build -o ./tmp/server ./cmd/server"
 bin = "./tmp/server"
 include_ext = ["go", "sql"]
+# Restart on .env edits too; the server re-reads it on every start.
+include_file = [".env"]
 exclude_dir = ["tmp"]
