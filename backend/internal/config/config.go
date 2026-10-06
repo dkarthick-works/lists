@@ -10,8 +10,7 @@ type Config struct {
 	DatabaseURL   string
 	Port          string
 	GoauthBaseURL string
-	// JWTSecret is Goauth's signing secret. Optional: without it every token is
-	// verified by calling Goauth, which is much slower.
+	// JWTSecret is the secret Goauth signs access tokens with.
 	JWTSecret string
 }
 
@@ -30,6 +29,9 @@ func Load() (Config, error) {
 	}
 	if c.GoauthBaseURL == "" {
 		return c, fmt.Errorf("GOAUTH_BASE_URL is required")
+	}
+	if c.JWTSecret == "" {
+		return c, fmt.Errorf("JWT_SECRET is required")
 	}
 	return c, nil
 }

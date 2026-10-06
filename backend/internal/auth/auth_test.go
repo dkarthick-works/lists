@@ -19,13 +19,13 @@ func sign(t *testing.T, method jwt.SigningMethod, key any, claims jwt.Registered
 	return s
 }
 
-func TestVerifyLocal(t *testing.T) {
-	v := NewVerifier("http://goauth.invalid", testSecret)
+func TestVerify(t *testing.T) {
+	v := NewVerifier(testSecret)
 	user := uuid.New()
 	in := func(d time.Duration) *jwt.NumericDate { return jwt.NewNumericDate(time.Now().Add(d)) }
 	valid := jwt.RegisteredClaims{Subject: user.String(), ExpiresAt: in(15 * time.Minute)}
 
-	got, err := v.verifyLocal(sign(t, jwt.SigningMethodHS256, []byte(testSecret), valid))
+	got, err := v.verify(sign(t, jwt.SigningMethodHS256, []byte(testSecret), valid))
 	if err != nil || got != user {
 		t.Fatalf("valid token: got %v, %v", got, err)
 	}
@@ -40,7 +40,7 @@ func TestVerifyLocal(t *testing.T) {
 		"garbage":       "not.a.token",
 	}
 	for name, token := range rejected {
-		if _, err := v.verifyLocal(token); err != ErrUnauthorized {
+		if _, err := v.verify(token); err != ErrUnauthorized {
 			t.Errorf("%s: want ErrUnauthorized, got %v", name, err)
 		}
 	}

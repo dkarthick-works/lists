@@ -1,22 +1,33 @@
 // Package migrations embeds the SQL schema so the server can apply it on startup.
 package migrations
 
-import _ "embed"
+import (
+	"context"
+	"embed"
+	"fmt"
 
-//go:embed migrations/001_init.sql
-var initSchema string
+	"github.com/jackc/pgx/v5/pgxpool"
+)
 
-//go:embed migrations/002_trigram_search.sql
-var trigramSearch string
+// 000_schema.sql is admin-only provisioning and is deliberately not matched.
+//
+//go:embed migrations/00[1-9]_*.sql
+var files embed.FS
 
-//go:embed migrations/003_entry_position.sql
-var entryPosition string
-
-//go:embed migrations/004_pinned.sql
-var pinned string
-
-//go:embed migrations/005_completed.sql
-var completed string
-
-// All is every migration the server applies, in order. Each is idempotent.
-var All = []string{initSchema, trigramSearch, entryPosition, pinned, completed}
+// Apply runs every migration in filename order. Each one is idempotent.
+func Apply(ctx context.Context, pool *pgxpool.Pool) error {
+	entries, err := files.ReadDir("migrations")
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		sql, err := files.ReadFile("migrations/" + e.Name())
+		if err != nil {
+			return err
+		}
+		if _, err := pool.Exec(ctx, string(sql)); err != nil {
+			return fmt.Errorf("%s: %w", e.Name(), err)
+		}
+	}
+	return nil
+}

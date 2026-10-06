@@ -12,8 +12,8 @@ cd backend && air        # hot reload; or: go run ./cmd/server
 cd frontend && npm install && npm run dev
 ```
 
-`backend/.env` (see `.env.example`) needs `DATABASE_URL` and `GOAUTH_BASE_URL`, and
-should have `JWT_SECRET` (the same value Goauth signs with).
+`backend/.env` (copy the root `.env.example`) needs `DATABASE_URL`, `GOAUTH_BASE_URL` and
+`JWT_SECRET` (the same value Goauth signs with).
 
 ## Database
 
@@ -30,10 +30,9 @@ Goauth handles accounts. The browser only talks to this backend:
 
 - `/api/auth/*` is reverse-proxied to Goauth's `/auth/*`, with the refresh cookie's path
   rewritten to match. Same origin is what makes the `SameSite=Strict` cookie work.
-- Every other `/api` route verifies the Bearer token itself: with Goauth's `JWT_SECRET`
-  set, it checks the HS256 signature and expiry in-process and reads the user id from the
-  token, with no call to Goauth. Without the secret it falls back to asking Goauth's
-  `GET /auth/me` (cached for a minute), which works but adds a slow round trip.
+- Every other `/api` route verifies the Bearer token itself, using Goauth's `JWT_SECRET`:
+  it checks the HS256 signature and expiry in-process and reads the user id from the
+  token, with no call to Goauth.
 
 The refresh cookie is `Secure`. Chrome and Firefox accept it on `http://localhost`;
 Safari does not, so in Safari a reload logs you out unless you serve over HTTPS.

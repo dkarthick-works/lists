@@ -26,26 +26,15 @@ func NewProxy(goauthBaseURL string) (http.Handler, error) {
 	// Goauth scopes the refresh cookie to Path=/auth; the browser sees
 	// /api/auth, so the path has to be rewritten or the cookie is never sent.
 	rp.ModifyResponse = func(resp *http.Response) error {
-		cookies := resp.Header["Set-Cookie"]
-		for i, c := range cookies {
-			cookies[i] = rewriteCookiePath(c, "/auth", "/api/auth")
+		cookies := resp.Cookies()
+		resp.Header.Del("Set-Cookie")
+		for _, c := range cookies {
+			if c.Path == "/auth" || strings.HasPrefix(c.Path, "/auth/") {
+				c.Path = "/api" + c.Path
+			}
+			resp.Header.Add("Set-Cookie", c.String())
 		}
 		return nil
 	}
 	return rp, nil
-}
-
-func rewriteCookiePath(cookie, from, to string) string {
-	parts := strings.Split(cookie, ";")
-	for i, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if len(trimmed) < 5 || !strings.EqualFold(trimmed[:5], "path=") {
-			continue
-		}
-		path := strings.TrimSpace(trimmed[5:])
-		if path == from || strings.HasPrefix(path, from+"/") {
-			parts[i] = " Path=" + to + path[len(from):]
-		}
-	}
-	return strings.Join(parts, ";")
 }

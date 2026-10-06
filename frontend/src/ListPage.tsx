@@ -43,50 +43,66 @@ function ListIcon() {
   );
 }
 
-// A plain entry: tap to edit in place. Enter or leaving the field saves,
-// Escape cancels.
-function EntryRow({ entry, onChange }: { entry: Item; onChange: (action: () => Promise<unknown>) => void }) {
-  const [draft, setDraft] = useState<string | null>(null);
+// Text field for editing a value in place. Enter or leaving the field saves,
+// Escape cancels; either way onClose runs first.
+function InlineEdit({
+  value,
+  label,
+  className,
+  onSave,
+  onClose,
+}: {
+  value: string;
+  label: string;
+  className?: string;
+  onSave: (text: string) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  // Removing the field on Escape can still fire blur; this stops that saving.
   const cancelled = useRef(false);
-
-  if (draft === null) {
-    return (
-      <button
-        className="row-text"
-        onClick={() => {
-          cancelled.current = false;
-          setDraft(entry.text);
-        }}
-      >
-        {entry.text}
-      </button>
-    );
-  }
-
-  function save() {
-    const text = draft?.trim();
-    setDraft(null);
-    if (cancelled.current || !text || text === entry.text) return;
-    onChange(() => lists.rename(entry.id, text));
-  }
-
   return (
     <input
-      className="row-input"
+      className={className}
       autoFocus
-      aria-label="Entry"
+      aria-label={label}
       maxLength={500}
       enterKeyHint="done"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
-      onBlur={save}
+      onBlur={() => {
+        const text = draft.trim();
+        onClose();
+        if (!cancelled.current && text && text !== value) onSave(text);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
         if (e.key === "Escape") {
           cancelled.current = true;
-          setDraft(null);
+          onClose();
         }
       }}
+    />
+  );
+}
+
+// A plain entry: tap to edit in place.
+function EntryRow({ entry, onChange }: { entry: Item; onChange: (action: () => Promise<unknown>) => void }) {
+  const [editing, setEditing] = useState(false);
+  if (!editing) {
+    return (
+      <button className="row-text" onClick={() => setEditing(true)}>
+        {entry.text}
+      </button>
+    );
+  }
+  return (
+    <InlineEdit
+      className="row-input"
+      label="Entry"
+      value={entry.text}
+      onSave={(text) => onChange(() => lists.rename(entry.id, text))}
+      onClose={() => setEditing(false)}
     />
   );
 }
@@ -97,9 +113,7 @@ export default function ListPage() {
   const confirmingDelete = useLocation().state?.confirmDelete === true;
   const [data, setData] = useState<ListDetail | null>(null);
   const [error, setError] = useState("");
-  // null unless the list name is being edited.
-  const [draft, setDraft] = useState<string | null>(null);
-  const cancelled = useRef(false);
+  const [renaming, setRenaming] = useState(false);
   // Id of the entry whose ⋯ menu is open.
   const [menuFor, setMenuFor] = useState<string | null>(null);
 
@@ -107,7 +121,7 @@ export default function ListPage() {
 
   useEffect(() => {
     setData(null);
-    setDraft(null);
+    setRenaming(false);
     setMenuFor(null);
     setError("");
     load().catch((e) => setError(e instanceof ApiError && e.status === 404 ? "List not found." : e.message));
@@ -154,15 +168,6 @@ export default function ListPage() {
     // A sub-list gets the same full-page confirmation as any list.
     if (entry.is_list) navigate(`/lists/${entry.id}`, { state: CONFIRM_DELETE });
     else mutate(() => lists.remove(entry.id));
-  }
-
-  // Double-tapping the name edits it in place; leaving the field or Enter saves.
-  function saveName() {
-    const name = draft?.trim();
-    setDraft(null);
-    if (cancelled.current) return;
-    if (!name || name === list.text) return;
-    mutate(() => lists.rename(list.id, name));
   }
 
   // Deleting returns to the parent list, or home for a top-level list.
@@ -225,17 +230,17 @@ export default function ListPage() {
       )}
 
       <div className="title">
-        {draft === null ? (
+        {renaming ? (
+          <InlineEdit
+            label="List name"
+            value={list.text}
+            onSave={(name) => mutate(() => lists.rename(list.id, name))}
+            onClose={() => setRenaming(false)}
+          />
+        ) : (
           <>
             <h1>
-              <DoubleTapButton
-                className="rename"
-                title="Double-tap to rename"
-                onDoubleTap={() => {
-                  cancelled.current = false;
-                  setDraft(list.text);
-                }}
-              >
+              <DoubleTapButton className="rename" title="Double-tap to rename" onDoubleTap={() => setRenaming(true)}>
                 {list.text}
               </DoubleTapButton>
             </h1>
@@ -248,24 +253,6 @@ export default function ListPage() {
               <TrashIcon />
             </DoubleTapButton>
           </>
-        ) : (
-          <input
-            autoFocus
-            aria-label="List name"
-            maxLength={500}
-            enterKeyHint="done"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={saveName}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-              if (e.key === "Escape") {
-                // Removing the field can still fire blur; make sure that doesn't save.
-                cancelled.current = true;
-                setDraft(null);
-              }
-            }}
-          />
         )}
       </div>
       {error && <p role="alert">{error}</p>}

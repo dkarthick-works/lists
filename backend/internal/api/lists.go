@@ -64,10 +64,13 @@ func (s *Server) recentLists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createList(w http.ResponseWriter, r *http.Request) {
-	var body struct {
+	body, ok := decode[struct {
 		Title string `json:"title"`
+	}](w, r)
+	if !ok {
+		return
 	}
-	text, ok := decodeText(w, r, &body, &body.Title)
+	text, ok := validText(w, body.Title)
 	if !ok {
 		return
 	}
@@ -110,11 +113,14 @@ func (s *Server) createEntry(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
+	body, ok := decode[struct {
 		Text   string `json:"text"`
 		IsList bool   `json:"is_list"`
+	}](w, r)
+	if !ok {
+		return
 	}
-	text, ok := decodeText(w, r, &body, &body.Text)
+	text, ok := validText(w, body.Text)
 	if !ok {
 		return
 	}
@@ -145,11 +151,10 @@ func (s *Server) reorderEntries(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
+	body, ok := decode[struct {
 		IDs []uuid.UUID `json:"ids"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	}](w, r)
+	if !ok {
 		return
 	}
 	if len(body.IDs) == 0 {
@@ -178,11 +183,14 @@ func (s *Server) setPinned(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
+	body, ok := decode[struct {
 		Pinned *bool `json:"pinned"`
+	}](w, r)
+	if !ok {
+		return
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil || body.Pinned == nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if body.Pinned == nil {
+		writeError(w, http.StatusBadRequest, "pinned is required")
 		return
 	}
 	user := auth.UserID(r.Context())
@@ -215,11 +223,14 @@ func (s *Server) setCompleted(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
+	body, ok := decode[struct {
 		Completed *bool `json:"completed"`
+	}](w, r)
+	if !ok {
+		return
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil || body.Completed == nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if body.Completed == nil {
+		writeError(w, http.StatusBadRequest, "completed is required")
 		return
 	}
 
@@ -252,12 +263,11 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
+	body, ok := decode[struct {
 		Text   *string `json:"text"`
 		IsList *bool   `json:"is_list"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	}](w, r)
+	if !ok {
 		return
 	}
 	makeList := body.IsList != nil && *body.IsList
@@ -377,13 +387,14 @@ func pathID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	return id, true
 }
 
-// decodeText reads the JSON body into dst and validates the one text field.
-func decodeText(w http.ResponseWriter, r *http.Request, dst any, field *string) (string, bool) {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(dst); err != nil {
+// decode reads a JSON request body, answering 400 itself if it is malformed.
+func decode[T any](w http.ResponseWriter, r *http.Request) (T, bool) {
+	var v T
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&v); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
-		return "", false
+		return v, false
 	}
-	return validText(w, *field)
+	return v, true
 }
 
 func validText(w http.ResponseWriter, raw string) (string, bool) {

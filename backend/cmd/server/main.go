@@ -35,23 +35,17 @@ func main() {
 		log.Fatal(err)
 	}
 	defer pool.Close()
-	for _, m := range migrations.All {
-		if _, err := pool.Exec(ctx, m); err != nil {
-			log.Fatalf("migrate: %v", err)
-		}
+	if err := migrations.Apply(ctx, pool); err != nil {
+		log.Fatalf("migrate: %v", err)
 	}
 
 	authProxy, err := auth.NewProxy(cfg.GoauthBaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
-	verifier := auth.NewVerifier(cfg.GoauthBaseURL, cfg.JWTSecret)
-	if !verifier.Local() {
-		log.Print("JWT_SECRET is not set: verifying every token through Goauth (slow)")
-	}
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           api.NewRouter(pool, verifier, authProxy),
+		Handler:           api.NewRouter(pool, auth.NewVerifier(cfg.JWTSecret), authProxy),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("listening on :%s", cfg.Port)
