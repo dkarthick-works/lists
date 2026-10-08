@@ -142,6 +142,7 @@ a {
 
 /* Controls — 16px text so iOS does not zoom on focus, 44px tap targets. */
 input,
+textarea,
 button {
   font: inherit;
   color: var(--ink);
@@ -152,10 +153,18 @@ button {
   appearance: none;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   min-width: 0;
   padding: 0 0.75rem;
+}
+
+textarea {
+  display: block;
+  padding-block: 0.65rem;
+  line-height: 1.4;
+  resize: none;
 }
 
 input[type="search"]::-webkit-search-decoration,
@@ -429,4 +438,28 @@ button.row-text {
 .menu button.on {
   background: var(--ink);
   color: var(--paper);
+}
+
+/* The composer field grows with long text, then scrolls. */
+.composer textarea {
+  max-height: 40vh;
+}
+
+.composer > div {
+  align-items: flex-end;
+}
+
+.composer button {
+  height: 2.75rem;
+}
+
+/* Page: long-form text shown as written. */
+.page-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.page-edit textarea {
+  min-height: 50vh;
 }

@@ -21,4 +21,5 @@ type ListsItem struct {
 	Position    int32      `json:"position"`
 	PinnedAt    *time.Time `json:"pinned_at"`
 	CompletedAt *time.Time `json:"completed_at"`
+	Body        *string    `json:"body"`
 }

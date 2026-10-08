@@ -13,6 +13,7 @@ import (
 	"lists/internal/api"
 	"lists/internal/auth"
 	"lists/internal/config"
+	"lists/internal/titler"
 )
 
 func main() {
@@ -44,8 +45,14 @@ func main() {
 		log.Fatal(err)
 	}
 	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           api.NewRouter(pool, auth.NewVerifier(cfg.JWTSecret), authProxy),
+		Addr: ":" + cfg.Port,
+		Handler: api.NewRouter(pool, auth.NewVerifier(cfg.JWTSecret), authProxy, api.Pages{
+			WordThreshold:     cfg.PageWordThreshold,
+			InitialTitleWords: cfg.InitialTitleWords,
+			MaxChars:          cfg.PageMaxChars,
+			Titler: titler.New(cfg.OpenRouterAPIKey, cfg.OpenRouterModel, cfg.OpenRouterBaseURL,
+				cfg.TitleMaxWords, cfg.OpenRouterTimeout),
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("listening on :%s", cfg.Port)

@@ -14,16 +14,30 @@ import (
 
 	"lists/internal/auth"
 	"lists/internal/db"
+	"lists/internal/titler"
 	"lists/web"
 )
 
-type Server struct {
-	pool *pgxpool.Pool
-	q    *db.Queries
+// Pages configures how long text is turned into pages.
+type Pages struct {
+	// WordThreshold: text with more words than this becomes a page.
+	WordThreshold int
+	// InitialTitleWords: how many opening words title a page until the
+	// generated title arrives.
+	InitialTitleWords int
+	// MaxChars is the longest page text accepted.
+	MaxChars int
+	Titler   *titler.Titler
 }
 
-func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handler) http.Handler {
-	s := &Server{pool: pool, q: db.New(pool)}
+type Server struct {
+	pool  *pgxpool.Pool
+	q     *db.Queries
+	pages Pages
+}
+
+func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handler, pages Pages) http.Handler {
+	s := &Server{pool: pool, q: db.New(pool), pages: pages}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger, middleware.Recoverer)
@@ -45,6 +59,7 @@ func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handl
 		r.Post("/lists/{id}/entries", s.createEntry)
 		r.Put("/lists/{id}/order", s.reorderEntries)
 		r.Put("/lists/{id}/pin", s.setPinned)
+		r.Get("/pages/{id}", s.getPage)
 		r.Patch("/items/{id}", s.updateItem)
 		r.Put("/items/{id}/completed", s.setCompleted)
 		r.Delete("/items/{id}", s.deleteItem)
