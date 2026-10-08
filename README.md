@@ -65,3 +65,17 @@ docker compose up -d --build
 
 The app listens on port 8082 in the container, published on host port 8085, and joins
 the external `coolify` network. The database must already be provisioned (see Database).
+
+## Android app
+
+`android/` is a thin Kotlin shell: one activity with a WebView that loads the web app.
+There is no native UI and no separate API client.
+
+```bash
+cd android
+adb reverse tcp:5175 tcp:5175   # let the device reach the Vite dev server
+./gradlew installDebug          # debug build loads http://localhost:5175
+```
+
+The release build loads `LISTS_URL` from `android/gradle.properties`; set it to the
+deployed app's HTTPS address before running `./gradlew assembleRelease`.
