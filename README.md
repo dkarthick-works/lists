@@ -47,6 +47,16 @@ Completed entries (`completed_at`) sort after the open ones but keep their posit
 Top-level lists can be pinned (`pinned_at`); pinned lists get their own section on the home
 page and are left out of "recently edited".
 
+## Pages (experimental)
+
+Text longer than `PAGE_WORD_THRESHOLD` words becomes a page: an entry whose `text` is a
+short generated title and whose `body` holds the full text. Typed into a list, it is a
+page in that list; typed on the home page, it creates a list with that title containing
+the page. Pages hold no entries. A new page is titled at once with its first
+`PAGE_INITIAL_TITLE_WORDS` words; if `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` are set,
+a generated title replaces that in the background, unless the user has renamed it first.
+All the knobs are in `.env.example`.
+
 ## Search
 
 `GET /api/lists/autocomplete?q=` returns up to 8 lists, at any depth, whose title contains

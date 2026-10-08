@@ -78,12 +78,12 @@ func (q *Queries) CountPinned(ctx context.Context, arg CountPinnedParams) (int64
 }
 
 const createItem = `-- name: CreateItem :one
-INSERT INTO lists.items (user_id, parent_id, text, is_list, position)
+INSERT INTO lists.items (user_id, parent_id, text, is_list, body, position)
 VALUES (
-    $1, $2, $3, $4,
+    $1, $2, $3, $4, $5,
     COALESCE((SELECT max(s.position) + 1 FROM lists.items s WHERE s.parent_id = $2), 0)
 )
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
 `
 
 type CreateItemParams struct {
@@ -91,15 +91,17 @@ type CreateItemParams struct {
 	ParentID *uuid.UUID `json:"parent_id"`
 	Text     string     `json:"text"`
 	IsList   bool       `json:"is_list"`
+	Body     *string    `json:"body"`
 }
 
-// New entries go to the end of their list.
+// New entries go to the end of their list. A non-null body makes it a page.
 func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (ListsItem, error) {
 	row := q.db.QueryRow(ctx, createItem,
 		arg.UserID,
 		arg.ParentID,
 		arg.Text,
 		arg.IsList,
+		arg.Body,
 	)
 	var i ListsItem
 	err := row.Scan(
@@ -113,6 +115,7 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (ListsIt
 		&i.Position,
 		&i.PinnedAt,
 		&i.CompletedAt,
+		&i.Body,
 	)
 	return i, err
 }
@@ -136,7 +139,7 @@ func (q *Queries) DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, 
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body FROM lists.items
 WHERE id = $1 AND user_id = $2
 `
 
@@ -159,6 +162,7 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (ListsItem, er
 		&i.Position,
 		&i.PinnedAt,
 		&i.CompletedAt,
+		&i.Body,
 	)
 	return i, err
 }
@@ -209,7 +213,7 @@ func (q *Queries) ListAncestors(ctx context.Context, arg ListAncestorsParams) ([
 }
 
 const listEntries = `-- name: ListEntries :many
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body FROM lists.items
 WHERE parent_id = $1 AND user_id = $2
 ORDER BY completed_at NULLS FIRST, position, created_at, id
 `
@@ -240,6 +244,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Lis
 			&i.Position,
 			&i.PinnedAt,
 			&i.CompletedAt,
+			&i.Body,
 		); err != nil {
 			return nil, err
 		}
@@ -252,7 +257,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Lis
 }
 
 const listRecent = `-- name: ListRecent :many
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body FROM lists.items
 WHERE user_id = $1 AND parent_id IS NULL AND pinned_at IS NULL
 ORDER BY updated_at DESC
 LIMIT 5
@@ -279,6 +284,7 @@ func (q *Queries) ListRecent(ctx context.Context, userID uuid.UUID) ([]ListsItem
 			&i.Position,
 			&i.PinnedAt,
 			&i.CompletedAt,
+			&i.Body,
 		); err != nil {
 			return nil, err
 		}
@@ -291,7 +297,7 @@ func (q *Queries) ListRecent(ctx context.Context, userID uuid.UUID) ([]ListsItem
 }
 
 const listTopLevel = `-- name: ListTopLevel :many
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body FROM lists.items
 WHERE user_id = $1 AND parent_id IS NULL
 ORDER BY lower(text), created_at
 `
@@ -316,6 +322,7 @@ func (q *Queries) ListTopLevel(ctx context.Context, userID uuid.UUID) ([]ListsIt
 			&i.Position,
 			&i.PinnedAt,
 			&i.CompletedAt,
+			&i.Body,
 		); err != nil {
 			return nil, err
 		}
@@ -330,8 +337,8 @@ func (q *Queries) ListTopLevel(ctx context.Context, userID uuid.UUID) ([]ListsIt
 const makeItemList = `-- name: MakeItemList :one
 UPDATE lists.items
 SET is_list = true, updated_at = now()
-WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
+WHERE id = $1 AND user_id = $2 AND body IS NULL
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
 `
 
 type MakeItemListParams struct {
@@ -353,6 +360,7 @@ func (q *Queries) MakeItemList(ctx context.Context, arg MakeItemListParams) (Lis
 		&i.Position,
 		&i.PinnedAt,
 		&i.CompletedAt,
+		&i.Body,
 	)
 	return i, err
 }
@@ -376,12 +384,40 @@ func (q *Queries) ReorderEntries(ctx context.Context, arg ReorderEntriesParams) 
 	return err
 }
 
+const replaceTitle = `-- name: ReplaceTitle :exec
+UPDATE lists.items
+SET text = $1
+WHERE user_id = $2
+  AND (id = $3 OR (parent_id = $3 AND body IS NOT NULL))
+  AND text = $4
+`
+
+type ReplaceTitleParams struct {
+	Title       string    `json:"title"`
+	UserID      uuid.UUID `json:"user_id"`
+	ID          uuid.UUID `json:"id"`
+	Placeholder string    `json:"placeholder"`
+}
+
+// Swaps a placeholder title for a generated one, on the item and on the page
+// directly inside it (a list made from long text shares its title with its
+// page). Anything the user has renamed since no longer matches and is left alone.
+func (q *Queries) ReplaceTitle(ctx context.Context, arg ReplaceTitleParams) error {
+	_, err := q.db.Exec(ctx, replaceTitle,
+		arg.Title,
+		arg.UserID,
+		arg.ID,
+		arg.Placeholder,
+	)
+	return err
+}
+
 const setCompleted = `-- name: SetCompleted :one
 UPDATE lists.items
 SET completed_at = CASE WHEN $3::boolean THEN COALESCE(completed_at, now()) END,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND parent_id IS NOT NULL
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
 `
 
 type SetCompletedParams struct {
@@ -406,6 +442,7 @@ func (q *Queries) SetCompleted(ctx context.Context, arg SetCompletedParams) (Lis
 		&i.Position,
 		&i.PinnedAt,
 		&i.CompletedAt,
+		&i.Body,
 	)
 	return i, err
 }
@@ -414,7 +451,7 @@ const setPinned = `-- name: SetPinned :one
 UPDATE lists.items
 SET pinned_at = CASE WHEN $3::boolean THEN COALESCE(pinned_at, now()) END
 WHERE id = $1 AND user_id = $2 AND parent_id IS NULL AND is_list
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
 `
 
 type SetPinnedParams struct {
@@ -439,6 +476,7 @@ func (q *Queries) SetPinned(ctx context.Context, arg SetPinnedParams) (ListsItem
 		&i.Position,
 		&i.PinnedAt,
 		&i.CompletedAt,
+		&i.Body,
 	)
 	return i, err
 }
@@ -464,7 +502,7 @@ const updateItemText = `-- name: UpdateItemText :one
 UPDATE lists.items
 SET text = $3, updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
 `
 
 type UpdateItemTextParams struct {
@@ -487,6 +525,39 @@ func (q *Queries) UpdateItemText(ctx context.Context, arg UpdateItemTextParams) 
 		&i.Position,
 		&i.PinnedAt,
 		&i.CompletedAt,
+		&i.Body,
+	)
+	return i, err
+}
+
+const updatePageBody = `-- name: UpdatePageBody :one
+UPDATE lists.items
+SET body = $3::text, updated_at = now()
+WHERE id = $1 AND user_id = $2 AND body IS NOT NULL
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
+`
+
+type UpdatePageBodyParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+	Body   string    `json:"body"`
+}
+
+func (q *Queries) UpdatePageBody(ctx context.Context, arg UpdatePageBodyParams) (ListsItem, error) {
+	row := q.db.QueryRow(ctx, updatePageBody, arg.ID, arg.UserID, arg.Body)
+	var i ListsItem
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ParentID,
+		&i.Text,
+		&i.IsList,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Position,
+		&i.PinnedAt,
+		&i.CompletedAt,
+		&i.Body,
 	)
 	return i, err
 }

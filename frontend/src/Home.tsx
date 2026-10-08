@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import Composer from "./Composer";
+import Composer, { useRefreshSoon } from "./Composer";
 import SearchBox from "./SearchBox";
 import { lists, type Item } from "./api";
 
@@ -66,6 +66,8 @@ export default function Home() {
     [],
   );
 
+  const refreshSoon = useRefreshSoon(load);
+
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, [load]);
@@ -73,7 +75,9 @@ export default function Home() {
   // The new list shows up under "Recently edited"; opening it is a separate tap.
   async function create(title: string) {
     try {
-      await lists.create(title);
+      const list = await lists.create(title);
+      // A different title back means the text became a page with a placeholder title.
+      if (list.text !== title.trim()) refreshSoon();
       await load();
       setError("");
     } catch (err) {

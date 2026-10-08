@@ -4,6 +4,7 @@ import { refresh, setAuthChangeHandler } from "./api";
 import Home from "./Home";
 import ListPage from "./ListPage";
 import Login from "./Login";
+import PageView from "./PageView";
 import Profile from "./Profile";
 
 export default function App() {
@@ -82,6 +83,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/lists/:id" element={<ListPage />} />
+          <Route path="/pages/:id" element={<PageView />} />
           <Route path="/profile" element={<Profile onLogout={() => setSession("out")} />} />
           <Route path="*" element={<p>Not found.</p>} />
         </Routes>

@@ -176,12 +176,19 @@ export interface Item {
   updated_at: string;
   pinned_at: string | null;
   completed_at: string | null;
+  // Set on pages: the full text. `text` is then the short title.
+  body: string | null;
 }
 
 export interface Suggestion {
   id: string;
   text: string;
   parent_text: string | null;
+}
+
+export interface PageDetail {
+  page: Item;
+  ancestors: { id: string; text: string }[];
 }
 
 export interface ListDetail {
@@ -196,6 +203,8 @@ export const lists = {
   autocomplete: (q: string) => request<Suggestion[]>("GET", `/api/lists/autocomplete?q=${encodeURIComponent(q)}`),
   create: (title: string) => request<Item>("POST", "/api/lists", { title }),
   get: (id: string) => request<ListDetail>("GET", `/api/lists/${id}`),
+  getPage: (id: string) => request<PageDetail>("GET", `/api/pages/${id}`),
+  setBody: (id: string, body: string) => request<Item>("PATCH", `/api/items/${id}`, { body }),
   addEntry: (listId: string, text: string, isList: boolean) =>
     request<Item>("POST", `/api/lists/${listId}/entries`, { text, is_list: isList }),
   rename: (id: string, text: string) => request<Item>("PATCH", `/api/items/${id}`, { text }),

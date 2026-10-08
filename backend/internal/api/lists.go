@@ -15,6 +15,7 @@ import (
 
 	"lists/internal/auth"
 	"lists/internal/db"
+	"lists/internal/titler"
 )
 
 const (
@@ -63,6 +64,8 @@ func (s *Server) recentLists(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rows)
 }
 
+// createList makes a top-level list. Long text becomes a short title, with
+// the full text kept as a page inside the new list.
 func (s *Server) createList(w http.ResponseWriter, r *http.Request) {
 	body, ok := decode[struct {
 		Title string `json:"title"`
@@ -70,18 +73,78 @@ func (s *Server) createList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	text, ok := validText(w, body.Title)
+	title, page, ok := s.titleAndPage(w, r, body.Title)
 	if !ok {
 		return
 	}
-	item, err := s.q.CreateItem(r.Context(), db.CreateItemParams{
-		UserID: auth.UserID(r.Context()), Text: text, IsList: true,
+	var list db.ListsItem
+	err := s.inTx(r.Context(), func(q *db.Queries) error {
+		var err error
+		list, err = createList(r.Context(), q, auth.UserID(r.Context()), nil, title, page)
+		return err
 	})
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, item)
+	if page != nil {
+		s.retitle(list.UserID, list.ID, title, *page)
+	}
+	writeJSON(w, http.StatusCreated, list)
+}
+
+// createList inserts a list and, when page is set, a page inside it.
+func createList(ctx context.Context, q *db.Queries, user uuid.UUID, parent *uuid.UUID, title string, page *string) (db.ListsItem, error) {
+	list, err := q.CreateItem(ctx, db.CreateItemParams{UserID: user, ParentID: parent, Text: title, IsList: true})
+	if err != nil || page == nil {
+		return list, err
+	}
+	_, err = q.CreateItem(ctx, db.CreateItemParams{UserID: user, ParentID: &list.ID, Text: title, Body: page})
+	return list, err
+}
+
+// titleAndPage validates new text and decides what it becomes. Short text is
+// used as typed (page is nil). Text over the word threshold, or too long for
+// a title, becomes a page: the full text, titled with its opening words until
+// retitle replaces that.
+func (s *Server) titleAndPage(w http.ResponseWriter, r *http.Request, raw string) (title string, page *string, ok bool) {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		writeError(w, http.StatusUnprocessableEntity, "text is required")
+		return "", nil, false
+	}
+	runes := len([]rune(text))
+	if len(strings.Fields(text)) <= s.pages.WordThreshold && runes <= maxTextLen {
+		return text, nil, true
+	}
+	if runes > s.pages.MaxChars {
+		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("text is too long (limit %d characters)", s.pages.MaxChars))
+		return "", nil, false
+	}
+	title = titler.Truncate(text, s.pages.InitialTitleWords)
+	if r := []rune(title); len(r) > maxTextLen {
+		title = string(r[:maxTextLen])
+	}
+	return title, &text, true
+}
+
+// retitle asks the model for a proper title in the background and swaps it
+// in for the placeholder, so creating a page never waits on the model.
+func (s *Server) retitle(user, id uuid.UUID, placeholder, text string) {
+	if !s.pages.Titler.Enabled() {
+		return
+	}
+	go func() {
+		// Not the request's context: that is cancelled once the response is sent.
+		ctx := context.Background()
+		title, err := s.pages.Titler.Generate(ctx, text)
+		if err == nil {
+			err = s.q.ReplaceTitle(ctx, db.ReplaceTitleParams{UserID: user, ID: id, Placeholder: placeholder, Title: title})
+		}
+		if err != nil {
+			log.Printf("retitle %s: %v", id, err)
+		}
+	}()
 }
 
 func (s *Server) getList(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +183,7 @@ func (s *Server) createEntry(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	text, ok := validText(w, body.Text)
+	title, page, ok := s.titleAndPage(w, r, body.Text)
 	if !ok {
 		return
 	}
@@ -128,9 +191,13 @@ func (s *Server) createEntry(w http.ResponseWriter, r *http.Request) {
 	var item db.ListsItem
 	err := s.inTx(r.Context(), func(q *db.Queries) error {
 		var err error
-		item, err = q.CreateItem(r.Context(), db.CreateItemParams{
-			UserID: user, ParentID: &list.ID, Text: text, IsList: body.IsList,
-		})
+		if body.IsList {
+			item, err = createList(r.Context(), q, user, &list.ID, title, page)
+		} else {
+			item, err = q.CreateItem(r.Context(), db.CreateItemParams{
+				UserID: user, ParentID: &list.ID, Text: title, Body: page,
+			})
+		}
 		if err != nil {
 			return err
 		}
@@ -140,7 +207,34 @@ func (s *Server) createEntry(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	if page != nil {
+		s.retitle(user, item.ID, title, *page)
+	}
 	writeJSON(w, http.StatusCreated, item)
+}
+
+// getPage returns a page with the lists above it.
+func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	user := auth.UserID(r.Context())
+	page, err := s.q.GetItem(r.Context(), db.GetItemParams{ID: id, UserID: user})
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && page.Body == nil) {
+		writeError(w, http.StatusNotFound, "page not found")
+		return
+	}
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	ancestors, err := s.q.ListAncestors(r.Context(), db.ListAncestorsParams{ID: id, UserID: user})
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"page": page, "ancestors": ancestors})
 }
 
 // reorderEntries sets the order of a list's entries to the given id order.
@@ -256,7 +350,7 @@ func (s *Server) setCompleted(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, item)
 }
 
-// updateItem changes an item's text, turns an entry into a list, or both.
+// updateItem changes an item's text, a page's body, or turns an entry into a list.
 // A list cannot be turned back into an entry: its contents would be orphaned.
 func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
@@ -266,6 +360,7 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 	body, ok := decode[struct {
 		Text   *string `json:"text"`
 		IsList *bool   `json:"is_list"`
+		Body   *string `json:"body"`
 	}](w, r)
 	if !ok {
 		return
@@ -275,7 +370,7 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "a list cannot be turned back into an entry")
 		return
 	}
-	if body.Text == nil && !makeList {
+	if body.Text == nil && body.Body == nil && !makeList {
 		writeError(w, http.StatusUnprocessableEntity, "nothing to update")
 		return
 	}
@@ -286,10 +381,24 @@ func (s *Server) updateItem(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var pageText string
+	if body.Body != nil {
+		pageText = strings.TrimSpace(*body.Body)
+		if pageText == "" || len([]rune(pageText)) > s.pages.MaxChars {
+			writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("page text must be 1 to %d characters", s.pages.MaxChars))
+			return
+		}
+	}
+
 	user := auth.UserID(r.Context())
 	var item db.ListsItem
 	err := s.inTx(r.Context(), func(q *db.Queries) error {
 		var err error
+		if body.Body != nil {
+			if item, err = q.UpdatePageBody(r.Context(), db.UpdatePageBodyParams{ID: id, UserID: user, Body: pageText}); err != nil {
+				return err
+			}
+		}
 		if body.Text != nil {
 			if item, err = q.UpdateItemText(r.Context(), db.UpdateItemTextParams{ID: id, UserID: user, Text: text}); err != nil {
 				return err

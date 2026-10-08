@@ -51,10 +51,10 @@ SELECT id, text FROM chain
 ORDER BY depth DESC;
 
 -- name: CreateItem :one
--- New entries go to the end of their list.
-INSERT INTO lists.items (user_id, parent_id, text, is_list, position)
+-- New entries go to the end of their list. A non-null body makes it a page.
+INSERT INTO lists.items (user_id, parent_id, text, is_list, body, position)
 VALUES (
-    $1, $2, $3, $4,
+    $1, $2, $3, $4, sqlc.narg(body),
     COALESCE((SELECT max(s.position) + 1 FROM lists.items s WHERE s.parent_id = $2), 0)
 )
 RETURNING *;
@@ -90,7 +90,7 @@ WHERE id IN (SELECT id FROM chain);
 -- name: MakeItemList :one
 UPDATE lists.items
 SET is_list = true, updated_at = now()
-WHERE id = $1 AND user_id = $2
+WHERE id = $1 AND user_id = $2 AND body IS NULL
 RETURNING *;
 
 -- name: SetPinned :one
@@ -114,3 +114,19 @@ SET completed_at = CASE WHEN sqlc.arg(completed)::boolean THEN COALESCE(complete
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND parent_id IS NOT NULL
 RETURNING *;
+
+-- name: UpdatePageBody :one
+UPDATE lists.items
+SET body = sqlc.arg(body)::text, updated_at = now()
+WHERE id = $1 AND user_id = $2 AND body IS NOT NULL
+RETURNING *;
+
+-- name: ReplaceTitle :exec
+-- Swaps a placeholder title for a generated one, on the item and on the page
+-- directly inside it (a list made from long text shares its title with its
+-- page). Anything the user has renamed since no longer matches and is left alone.
+UPDATE lists.items
+SET text = sqlc.arg(title)
+WHERE user_id = sqlc.arg(user_id)
+  AND (id = sqlc.arg(id) OR (parent_id = sqlc.arg(id) AND body IS NOT NULL))
+  AND text = sqlc.arg(placeholder);

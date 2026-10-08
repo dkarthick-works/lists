@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import Composer from "./Composer";
+import Composer, { useRefreshSoon } from "./Composer";
 import { ApiError, lists, type Item, type ListDetail } from "./api";
 
 // Router state that puts a list page into its delete confirmation.
@@ -17,7 +17,7 @@ function TrashIcon() {
 // A button that only acts on two taps within 300ms, so a stray tap does
 // nothing. Timed by hand because touch browsers do not all fire dblclick.
 // Keyboard activation (e.detail === 0) is deliberate, so it acts at once.
-function DoubleTapButton({
+export function DoubleTapButton({
   onDoubleTap,
   ...props
 }: { onDoubleTap: () => void } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick">) {
@@ -45,7 +45,7 @@ function ListIcon() {
 
 // Text field for editing a value in place. Enter or leaving the field saves,
 // Escape cancels; either way onClose runs first.
-function InlineEdit({
+export function InlineEdit({
   value,
   label,
   className,
@@ -118,6 +118,7 @@ export default function ListPage() {
   const [menuFor, setMenuFor] = useState<string | null>(null);
 
   const load = useCallback(() => lists.get(id).then(setData), [id]);
+  const refreshSoon = useRefreshSoon(load);
 
   useEffect(() => {
     setData(null);
@@ -265,6 +266,10 @@ export default function ListPage() {
                 <Link to={`/lists/${entry.id}`} className="row-link">
                   {entry.text} <span aria-hidden="true">→</span>
                 </Link>
+              ) : entry.body !== null ? (
+                <Link to={`/pages/${entry.id}`} className="row-link">
+                  {entry.text} <span aria-hidden="true">¶</span>
+                </Link>
               ) : (
                 <EntryRow entry={entry} onChange={mutate} />
               )}
@@ -314,7 +319,7 @@ export default function ListPage() {
                     >
                       ↓
                     </button>
-                    {!entry.is_list && (
+                    {!entry.is_list && entry.body === null && (
                       <button
                         role="menuitem"
                         className="icon"
@@ -354,7 +359,10 @@ export default function ListPage() {
         onSend={(text) =>
           lists
             .addEntry(list.id, text, false)
-            .then(load)
+            .then((entry) => {
+              if (entry.body !== null) refreshSoon();
+              return load();
+            })
             .then(() => setError(""))
             .catch((e) => {
               setError(e.message);
