@@ -14,20 +14,27 @@ export default function Profile({ onLogout }: { onLogout: () => void }) {
   return (
     <>
       <h1>Profile</h1>
-      <section>
-        <h2>Signed in as</h2>
-        <p className={email ? undefined : "muted"}>{email || "Loading…"}</p>
-      </section>
-      <ApiKeys />
-      <div>
-        <button
-          onClick={async () => {
-            await logout();
-            onLogout();
-          }}
-        >
-          Log out
-        </button>
+      <div className="settings">
+        <section className="stack">
+          <h2>Account</h2>
+          <ul className="rows">
+            <li className="key-row">
+              <div className="row-text">
+                <span className="small muted">Signed in as</span>
+                <div className={email ? undefined : "muted"}>{email || "Loading…"}</div>
+              </div>
+              <button
+                onClick={async () => {
+                  await logout();
+                  onLogout();
+                }}
+              >
+                Log out
+              </button>
+            </li>
+          </ul>
+        </section>
+        <ApiKeys />
       </div>
     </>
   );

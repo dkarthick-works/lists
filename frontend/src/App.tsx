@@ -5,6 +5,8 @@ import Home from "./Home";
 import ListPage from "./ListPage";
 import Login from "./Login";
 import PageView from "./PageView";
+import ReminderPage from "./ReminderPage";
+import { syncReminders } from "./android";
 import Profile from "./Profile";
 
 export default function App() {
@@ -44,6 +46,16 @@ export default function App() {
     return () => window.removeEventListener("online", restore);
   }, [session, restore]);
 
+  // On Android, hand the phone the reminders whenever the app opens or comes
+  // back to the front (MainActivity fires "android-resume"), so changes made
+  // elsewhere get scheduled.
+  useEffect(() => {
+    if (session !== "in") return;
+    syncReminders();
+    window.addEventListener("android-resume", syncReminders);
+    return () => window.removeEventListener("android-resume", syncReminders);
+  }, [session]);
+
   if (session === "loading") return <main className="page muted">Loading…</main>;
   if (session === "unavailable") {
     return (
@@ -67,7 +79,12 @@ export default function App() {
           <Link to="/" className="brand">
             Lists
           </Link>
-          <button aria-label="Menu" aria-expanded={menuOpen} aria-controls="sidenav" onClick={() => setMenuOpen((o) => !o)}>
+          <button
+            aria-label="Menu"
+            aria-expanded={menuOpen}
+            aria-controls="sidenav"
+            onClick={() => setMenuOpen((o) => !o)}
+          >
             {menuOpen ? "✕" : "☰"}
           </button>
         </div>
@@ -83,6 +100,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/lists/:id" element={<ListPage />} />
+          <Route path="/lists/:id/remind/:entryId" element={<ReminderPage />} />
           <Route path="/pages/:id" element={<PageView />} />
           <Route path="/profile" element={<Profile onLogout={() => setSession("out")} />} />
           <Route path="*" element={<p>Not found.</p>} />

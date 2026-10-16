@@ -136,11 +136,9 @@ export async function logout() {
   await post("/api/auth/logout").catch(() => {});
 }
 
-export const signup = (email: string, password: string) =>
-  post("/api/auth/signup", { email, password }).then(parse);
+export const signup = (email: string, password: string) => post("/api/auth/signup", { email, password }).then(parse);
 
-export const forgotPassword = (email: string) =>
-  post("/api/auth/forgot-password", { email }).then(parse);
+export const forgotPassword = (email: string) => post("/api/auth/forgot-password", { email }).then(parse);
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const attempt = () =>
@@ -178,6 +176,20 @@ export interface Item {
   completed_at: string | null;
   // Set on pages: the full text. `text` is then the short title.
   body: string | null;
+  // Wall-clock "YYYY-MM-DDTHH:MM" (no zone) and an optional RRULE. See reminder.ts.
+  remind_at: string | null;
+  remind_rule: string | null;
+}
+
+// An entry's reminder, as the Android app schedules it.
+export interface Reminder {
+  id: string;
+  text: string;
+  remind_at: string;
+  remind_rule: string | null;
+  completed_at: string | null;
+  list_id: string;
+  list_text: string;
 }
 
 export interface Suggestion {
@@ -209,11 +221,14 @@ export const lists = {
     request<Item>("POST", `/api/lists/${listId}/entries`, { text, is_list: isList }),
   rename: (id: string, text: string) => request<Item>("PATCH", `/api/items/${id}`, { text }),
   setPinned: (id: string, pinned: boolean) => request<Item>("PUT", `/api/lists/${id}/pin`, { pinned }),
-  setCompleted: (id: string, completed: boolean) =>
-    request<Item>("PUT", `/api/items/${id}/completed`, { completed }),
+  setCompleted: (id: string, completed: boolean) => request<Item>("PUT", `/api/items/${id}/completed`, { completed }),
   reorder: (listId: string, ids: string[]) => request<null>("PUT", `/api/lists/${listId}/order`, { ids }),
   makeList: (id: string) => request<Item>("PATCH", `/api/items/${id}`, { is_list: true }),
   remove: (id: string) => request<null>("DELETE", `/api/items/${id}`),
+  // A null remindAt clears the reminder.
+  setReminder: (id: string, remindAt: string | null, rule: string | null) =>
+    request<Item>("PUT", `/api/items/${id}/reminder`, { remind_at: remindAt, remind_rule: rule }),
+  reminders: () => request<Reminder[]>("GET", "/api/reminders"),
 };
 
 // Personal API keys for MCP clients. The raw key only comes back from createKey.

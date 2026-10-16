@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"lists/internal/wallclock"
 )
 
 type ListsApiKey struct {
@@ -21,15 +22,17 @@ type ListsApiKey struct {
 }
 
 type ListsItem struct {
-	ID          uuid.UUID  `json:"id"`
-	UserID      uuid.UUID  `json:"user_id"`
-	ParentID    *uuid.UUID `json:"parent_id"`
-	Text        string     `json:"text"`
-	IsList      bool       `json:"is_list"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Position    int32      `json:"position"`
-	PinnedAt    *time.Time `json:"pinned_at"`
-	CompletedAt *time.Time `json:"completed_at"`
-	Body        *string    `json:"body"`
+	ID          uuid.UUID      `json:"id"`
+	UserID      uuid.UUID      `json:"user_id"`
+	ParentID    *uuid.UUID     `json:"parent_id"`
+	Text        string         `json:"text"`
+	IsList      bool           `json:"is_list"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	Position    int32          `json:"position"`
+	PinnedAt    *time.Time     `json:"pinned_at"`
+	CompletedAt *time.Time     `json:"completed_at"`
+	Body        *string        `json:"body"`
+	RemindAt    wallclock.Time `json:"remind_at"`
+	RemindRule  *string        `json:"remind_rule"`
 }

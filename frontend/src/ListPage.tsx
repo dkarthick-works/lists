@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import Composer, { useRefreshSoon } from "./Composer";
+import { isAndroid, syncReminders } from "./android";
 import { ApiError, lists, type Item, type ListDetail } from "./api";
+import { fromStored, summary } from "./reminder";
 
 // Router state that puts a list page into its delete confirmation.
 const CONFIRM_DELETE = { confirmDelete: true };
@@ -32,6 +34,27 @@ export function DoubleTapButton({
         if (double || e.detail === 0) onDoubleTap();
       }}
     />
+  );
+}
+
+function ClockIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <circle cx="12" cy="13" r="7.5" />
+      <path d="M12 9v4.5l3 2M4.5 5l2.5-2M19.5 5L17 3" />
+    </svg>
+  );
+}
+
+// The line under an entry that has a reminder. Completing the entry pauses it.
+function ReminderTag({ entry }: { entry: Item }) {
+  if (!entry.remind_at) return null;
+  return (
+    <span className="remind-tag">
+      <ClockIcon size={14} />
+      {entry.completed_at ? "paused · " : ""}
+      {summary(fromStored(entry.remind_at, entry.remind_rule))}
+    </span>
   );
 }
 
@@ -86,14 +109,14 @@ export function InlineEdit({
   );
 }
 
-// A plain entry: tap to edit in place.
+// A plain entry: double-tap to edit in place.
 function EntryRow({ entry, onChange }: { entry: Item; onChange: (action: () => Promise<unknown>) => void }) {
   const [editing, setEditing] = useState(false);
   if (!editing) {
     return (
-      <button className="row-text" onClick={() => setEditing(true)}>
+      <DoubleTapButton className="row-text" title="Double-tap to edit" onDoubleTap={() => setEditing(true)}>
         {entry.text}
-      </button>
+      </DoubleTapButton>
     );
   }
   return (
@@ -128,16 +151,30 @@ export default function ListPage() {
     load().catch((e) => setError(e instanceof ApiError && e.status === 404 ? "List not found." : e.message));
   }, [load]);
 
+  // Back from the reminder screen on Android: Done taps there tick entries off,
+  // so re-read the list once they have been sent.
+  useEffect(() => {
+    const onResume = () => syncReminders().then(load).catch(() => {});
+    window.addEventListener("android-resume", onResume);
+    return () => window.removeEventListener("android-resume", onResume);
+  }, [load]);
+
   if (!data) return <p className={error ? undefined : "muted"}>{error || "Loading…"}</p>;
   const { list, entries, ancestors } = data;
 
   // Runs a change, then re-reads the list so the page shows server state.
   const mutate = (action: () => Promise<unknown>) => {
+    // Completing, renaming or deleting an entry changes what the phone rings for.
     action()
       .then(load)
-      .then(() => setError(""))
+      .then(() => {
+        setError("");
+        syncReminders();
+      })
       .catch((e) => setError(e.message));
   };
+
+  const android = isAndroid();
 
   // Completed entries sit after the open ones and are not reorderable.
   const openCount = entries.filter((e) => e.completed_at === null).length;
@@ -176,7 +213,10 @@ export default function ListPage() {
     const parent = ancestors[ancestors.length - 1];
     lists
       .remove(list.id)
-      .then(() => navigate(parent ? `/lists/${parent.id}` : "/", { replace: true }))
+      .then(() => {
+        syncReminders();
+        navigate(parent ? `/lists/${parent.id}` : "/", { replace: true });
+      })
       .catch((e) => setError(e.message));
   }
 
@@ -262,17 +302,20 @@ export default function ListPage() {
         <ul className="rows">
           {entries.map((entry, i) => (
             <li key={entry.id} className={entry.completed_at ? "entry completed" : "entry"}>
-              {entry.is_list ? (
-                <Link to={`/lists/${entry.id}`} className="row-link">
-                  {entry.text} <span aria-hidden="true">→</span>
-                </Link>
-              ) : entry.body !== null ? (
-                <Link to={`/pages/${entry.id}`} className="row-link">
-                  {entry.text} <span aria-hidden="true">¶</span>
-                </Link>
-              ) : (
-                <EntryRow entry={entry} onChange={mutate} />
-              )}
+              <div className="row-main">
+                {entry.is_list ? (
+                  <Link to={`/lists/${entry.id}`} className="row-link">
+                    {entry.text} <span aria-hidden="true">→</span>
+                  </Link>
+                ) : entry.body !== null ? (
+                  <Link to={`/pages/${entry.id}`} className="row-link">
+                    {entry.text} <span aria-hidden="true">¶</span>
+                  </Link>
+                ) : (
+                  <EntryRow entry={entry} onChange={mutate} />
+                )}
+                {android && <ReminderTag entry={entry} />}
+              </div>
               <button
                 className="icon"
                 aria-label={`Options for ${entry.text}`}
@@ -319,6 +362,17 @@ export default function ListPage() {
                     >
                       ↓
                     </button>
+                    {android && (
+                      <button
+                        role="menuitem"
+                        className={entry.remind_at ? "icon on" : "icon"}
+                        aria-label="Remind me"
+                        title="Remind me"
+                        onClick={() => navigate(`/lists/${list.id}/remind/${entry.id}`)}
+                      >
+                        <ClockIcon />
+                      </button>
+                    )}
                     {!entry.is_list && entry.body === null && (
                       <button
                         role="menuitem"

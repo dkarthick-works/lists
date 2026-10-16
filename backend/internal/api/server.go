@@ -62,6 +62,8 @@ func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handl
 		r.Get("/pages/{id}", s.getPage)
 		r.Patch("/items/{id}", s.updateItem)
 		r.Put("/items/{id}/completed", s.setCompleted)
+		r.Put("/items/{id}/reminder", s.setReminder)
+		r.Get("/reminders", s.listReminders)
 		r.Delete("/items/{id}", s.deleteItem)
 		r.Get("/keys", s.listKeys)
 		r.Post("/keys", s.createKey)

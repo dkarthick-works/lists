@@ -28,3 +28,8 @@ sql:
               import: "time"
               type: "Time"
               pointer: true
+          - db_type: "pg_catalog.timestamp"
+            nullable: true
+            go_type:
+              import: "lists/internal/wallclock"
+              type: "Time"

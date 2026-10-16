@@ -16,31 +16,37 @@ function ago(iso: string) {
   return "just now";
 }
 
-// A read-only block of text with a Copy button under it.
-function Copyable({ label, text }: { label: string; text: string }) {
-  const [status, setStatus] = useState("");
+// Copies text, then says so on the button for a moment. Without a clipboard
+// (outside a secure context) the text it belongs to selects in one tap instead.
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [status, setStatus] = useState<"" | "Copied" | "Couldn't copy">("");
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
       setStatus("Copied");
     } catch {
-      // No clipboard outside a secure context: the box selects in one tap instead.
-      setStatus("Couldn't copy. Select the text and copy it by hand.");
+      setStatus("Couldn't copy");
     }
     setTimeout(() => setStatus(""), 2000);
   }
 
   return (
+    <button onClick={copy} aria-label={`Copy ${label}`}>
+      <span aria-live="polite">{status || "Copy"}</span>
+    </button>
+  );
+}
+
+// A read-only block of text with a Copy button under it.
+function Copyable({ label, text }: { label: string; text: string }) {
+  return (
     <div className="stack">
       <pre className="secret" aria-label={label}>
         {text}
       </pre>
-      <div className="title">
-        <span className="muted" aria-live="polite">
-          {status}
-        </span>
-        <button onClick={copy}>Copy</button>
+      <div className="copy-row">
+        <CopyButton text={text} label={label} />
       </div>
     </div>
   );
@@ -90,14 +96,67 @@ export default function ApiKeys() {
       .catch((e) => setError(e.message));
   }
 
-  const command = created && `claude mcp add --transport http lists ${location.origin}/mcp --header "Authorization: Bearer ${created}"`;
+  const endpoint = `${location.origin}/mcp`;
+  const command =
+    created && `claude mcp add --transport http lists ${endpoint} --header "Authorization: Bearer ${created}"`;
 
   return (
     <section className="stack">
       <h2>Developer settings</h2>
-      <p>API keys let AI agents (Claude Code, Cursor, …) read and add to your lists over MCP.</p>
+      <p className="measure">API keys let AI agents (Claude Code, Cursor, …) read and add to your lists over MCP.</p>
 
-      <form className="inline-form" onSubmit={create}>
+      <ul className="rows">
+        <li className="key-row">
+          <div className="row-text">
+            <span className="small muted">MCP endpoint</span>
+            <div className="secret-inline">
+              {/* On a narrow screen, wrap before /mcp rather than inside a word. */}
+              {location.origin}
+              <wbr />
+              /mcp
+            </div>
+          </div>
+          <CopyButton text={endpoint} label="MCP endpoint" />
+        </li>
+      </ul>
+
+      <div className="stack group">
+        <span className="field-label">{keys && keys.length > 0 ? `Keys (${keys.length})` : "Keys"}</span>
+        {keys === null ? (
+          <p className="muted">Loading…</p>
+        ) : keys.length === 0 ? (
+          <p className="muted">No API keys yet.</p>
+        ) : (
+          <ul className="rows">
+            {keys.map((k) =>
+              confirming === k.id ? (
+                <li key={k.id} className="key-confirm stack">
+                  <p>Revoke "{k.name}"? Agents using it will stop working.</p>
+                  <div className="confirm-actions">
+                    <button className="primary" onClick={() => revoke(k.id)}>
+                      Revoke
+                    </button>
+                    <button onClick={() => setConfirming(null)}>Cancel</button>
+                  </div>
+                </li>
+              ) : (
+                <li key={k.id} className="key-row">
+                  <div className="row-text">
+                    <strong>{k.name}</strong>
+                    <div className="small muted">
+                      Created {new Date(k.created_at).toLocaleDateString()} · Last used{" "}
+                      {k.last_used_at ? ago(k.last_used_at) : "never"}
+                    </div>
+                  </div>
+                  <button onClick={() => setConfirming(k.id)}>Revoke</button>
+                </li>
+              ),
+            )}
+          </ul>
+        )}
+      </div>
+
+      <form className="inline-form group" onSubmit={create}>
         <label>
           New key name
           <input value={name} maxLength={100} placeholder="e.g. Laptop" onChange={(e) => setName(e.target.value)} />
@@ -109,7 +168,7 @@ export default function ApiKeys() {
       {error && <p role="alert">{error}</p>}
 
       {created && command && (
-        <div className="stack">
+        <div className="stack reveal">
           <p>
             <strong>Copy your new key now. You won't see it again.</strong>
           </p>
@@ -120,38 +179,6 @@ export default function ApiKeys() {
             <button onClick={() => setCreated(null)}>Done</button>
           </div>
         </div>
-      )}
-
-      {keys === null ? (
-        <p className="muted">Loading…</p>
-      ) : keys.length === 0 ? (
-        <p className="muted">No API keys yet.</p>
-      ) : (
-        <ul className="rows">
-          {keys.map((k) =>
-            confirming === k.id ? (
-              <li key={k.id} className="key-confirm stack">
-                <p>Revoke "{k.name}"? Agents using it will stop working.</p>
-                <div className="confirm-actions">
-                  <button className="primary" onClick={() => revoke(k.id)}>
-                    Revoke
-                  </button>
-                  <button onClick={() => setConfirming(null)}>Cancel</button>
-                </div>
-              </li>
-            ) : (
-              <li key={k.id} className="key-row">
-                <div className="row-text">
-                  <strong>{k.name}</strong>
-                  <div className="muted">
-                    Created {new Date(k.created_at).toLocaleDateString()} · Last used {k.last_used_at ? ago(k.last_used_at) : "never"}
-                  </div>
-                </div>
-                <button onClick={() => setConfirming(k.id)}>Revoke</button>
-              </li>
-            ),
-          )}
-        </ul>
       )}
     </section>
   );
