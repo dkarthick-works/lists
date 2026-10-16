@@ -501,3 +501,122 @@ button.row-text {
   flex: 1;
   min-width: 0;
 }
+
+/* Reminders (Android only). An entry row stacks its text and reminder line. */
+.row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.remind-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: -0.45rem;
+  padding: 0 0.75rem 0.6rem;
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+
+.remind-tag svg {
+  flex: none;
+}
+
+.small {
+  font-size: 0.8rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chips button {
+  min-height: 2.25rem;
+  padding: 0 0.6rem;
+  font-size: 0.85rem;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+/* Joined toggle buttons: a segmented control and the row of weekdays. */
+.seg {
+  display: flex;
+}
+
+.seg button {
+  flex: 1;
+  padding: 0 0.4rem;
+  font-size: 0.85rem;
+  white-space: normal;
+}
+
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.days button {
+  padding: 0;
+}
+
+.seg button + button,
+.days button + button {
+  margin-left: -1px;
+}
+
+.seg button.on,
+.days button.on,
+.chips button.on {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+label.inline-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+}
+
+.inline-row input {
+  width: 5rem;
+  flex: none;
+}
+
+.summary {
+  font-weight: 700;
+}
+
+.next {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.85rem;
+}
+
+/* Save / Cancel pinned to the bottom edge, like the composer. */
+.form-foot {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--paper);
+  border-top: 1px solid var(--ink);
+}
+
+.form-foot > div {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.page:has(.form-foot) {
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}
