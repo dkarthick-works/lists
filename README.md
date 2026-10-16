@@ -126,7 +126,8 @@ a double-tap and reaches the server on the next sync; snooze stays on the phone.
 completed entry's reminder is paused until it is reopened. Edits made in a browser or
 over MCP reach the phone the next time the app is opened.
 
-Grant these once for the app (it opens each screen the first time a reminder exists):
+Grant these once for the app (while any is missing and a reminder exists, it opens
+each screen once per launch):
 notifications, **Alarms & reminders** (exact alarms), **Full-screen notifications**,
 and **Display over other apps** (lets the reminder open over an unlocked phone instead
 of only showing a banner). Turn off battery optimisation for it too. Under Do Not

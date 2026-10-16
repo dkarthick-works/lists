@@ -23,6 +23,11 @@ import android.window.OnBackInvokedDispatcher
 class MainActivity : Activity() {
     private lateinit var web: WebView
 
+    companion object {
+        // Lives as long as the app's process, so each screen opens once per launch.
+        private val askedThisLaunch = mutableSetOf<String>()
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,11 +79,12 @@ class MainActivity : Activity() {
         if (Reminders.all(this).isNotEmpty()) askForReminderAccess()
     }
 
-    // Opens, once each, the screens that grant what reminders need: notifications,
-    // exact alarms, full-screen reminders and drawing over other apps. Coming
-    // back here (onResume) moves on to the next one.
+    // Opens, once per launch each, the screens that grant what reminders need:
+    // notifications, exact alarms, full-screen reminders and drawing over other
+    // apps. Coming back here (onResume) moves on to the next one. Anything still
+    // missing is asked for again next launch: without it reminders ring late or
+    // only as a banner.
     private fun askForReminderAccess() {
-        val asked = getSharedPreferences("asked", MODE_PRIVATE)
         val pkg = Uri.parse("package:$packageName")
         val steps: List<Triple<String, Boolean, () -> Unit>> = listOf(
             Triple(
@@ -95,8 +101,8 @@ class MainActivity : Activity() {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg))
             },
         )
-        val next = steps.firstOrNull { (key, missing) -> missing && !asked.getBoolean(key, false) } ?: return
-        asked.edit().putBoolean(next.first, true).apply()
+        val next = steps.firstOrNull { (key, missing) -> missing && key !in askedThisLaunch } ?: return
+        askedThisLaunch += next.first
         next.third()
     }
 
