@@ -7,7 +7,14 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.graphics.PixelFormat
+import android.media.AudioAttributes
+import android.media.RingtoneManager
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
+import android.view.View
+import android.view.WindowManager
 
 // Rings for due reminders, and re-arms the alarm whenever Android may have
 // dropped it or moved the clock: reboot, app update, clock or zone change,
@@ -23,49 +30,77 @@ class ReminderReceiver : BroadcastReceiver() {
         val (due, at) = Reminders.due(ctx)
         Reminders.schedule(ctx, after = maxOf(at, System.currentTimeMillis()))
         if (due.isEmpty()) return
-        show(ctx, due.map { it.id }, at)
+        val ids = due.map { it.id }
+        notify(ctx, ids, at, ringing = true)
+        if (Settings.canDrawOverlays(ctx)) openOverOtherApps(ctx, ReminderActivity.intent(ctx, ids, at), goAsync())
     }
 
     companion object {
-        const val CHANNEL = "reminders"
-        // For when the screen opens by itself: a heads-up banner would only cover it.
-        const val QUIET_CHANNEL = "reminders_open"
-        const val NOTIFICATION_ID = 1
+        // Rings until the reminder screen opens: a full-screen notification takes
+        // over a locked phone, and an unlocked one at least gets a ringing banner.
+        private const val RINGING = "reminders_ringing"
+        // Once the screen is open the notification is only a way back to it.
+        private const val QUIET = "reminders_open"
+        private const val NOTIFICATION_ID = 1
 
-        fun show(ctx: Context, ids: List<String>, at: Long) {
-            val screen = ReminderActivity.intent(ctx, ids, at)
-            val open = PendingIntent.getActivity(
-                ctx, 1, screen, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
+        fun notify(ctx: Context, ids: List<String>, at: Long, ringing: Boolean) {
             val nm = ctx.getSystemService(NotificationManager::class.java)
-            // Both silent: the reminder screen plays the sound itself, so it can
-            // stay quiet under Do Not Disturb and stop the moment it is answered.
+            nm.deleteNotificationChannel("reminders") // silent; replaced by RINGING
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
-                    setSound(null, null)
-                    enableVibration(false)
+                NotificationChannel(RINGING, "Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
+                    // Notification usage, not alarm, so Do Not Disturb silences it.
+                    setSound(
+                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                        AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT).build(),
+                    )
+                    enableVibration(true)
                 },
             )
-            nm.createNotificationChannel(
-                NotificationChannel(QUIET_CHANNEL, "Open reminders", NotificationManager.IMPORTANCE_LOW),
+            nm.createNotificationChannel(NotificationChannel(QUIET, "Open reminders", NotificationManager.IMPORTANCE_LOW))
+
+            val open = PendingIntent.getActivity(
+                ctx, 1, ReminderActivity.intent(ctx, ids, at), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
-            // With "Display over other apps" Android lets us open the screen
-            // straight over any app, locked or not; the notification is then just
-            // a way back to it. Without it, a full-screen notification takes over
-            // a locked phone, and an unlocked one only gets a banner.
-            val direct = Settings.canDrawOverlays(ctx)
             val first = Reminders.find(ctx, ids).firstOrNull()?.text ?: "Reminder"
             val more = if (ids.size > 1) " (+${ids.size - 1} more)" else ""
-            val notification = Notification.Builder(ctx, if (direct) QUIET_CHANNEL else CHANNEL)
+            val builder = Notification.Builder(ctx, if (ringing) RINGING else QUIET)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
                 .setContentTitle(first + more)
                 .setContentText("Tap to open the reminder")
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setContentIntent(open)
                 .setOngoing(true)
-            if (!direct) notification.setFullScreenIntent(open, true)
-            nm.notify(NOTIFICATION_ID, notification.build())
-            if (direct) ctx.startActivity(screen)
+            if (ringing) builder.setFullScreenIntent(open, true)
+            val n = builder.build()
+            if (ringing) n.flags = n.flags or Notification.FLAG_INSISTENT // repeat the sound until answered
+            nm.notify(NOTIFICATION_ID, n)
+        }
+
+        fun cancel(ctx: Context) = ctx.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+
+        // Since Android 15, "Display over other apps" only lets an app open a
+        // screen from the background while one of its overlay windows is
+        // visible. So show an invisible 1px overlay, open the reminder over
+        // whatever app is in use, then take the overlay away.
+        private fun openOverOtherApps(ctx: Context, screen: Intent, pending: PendingResult) {
+            val wm = ctx.getSystemService(WindowManager::class.java)
+            val dot = View(ctx)
+            val params = WindowManager.LayoutParams(
+                1, 1,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT,
+            )
+            if (runCatching { wm.addView(dot, params) }.isFailure) return pending.finish()
+            val main = Handler(Looper.getMainLooper())
+            // ponytail: fixed waits for the overlay to count as visible; switch to a draw listener if a phone needs longer.
+            main.postDelayed({
+                runCatching { ctx.startActivity(screen) }
+                main.postDelayed({
+                    runCatching { wm.removeView(dot) }
+                    pending.finish()
+                }, 1000)
+            }, 300)
         }
     }
 }

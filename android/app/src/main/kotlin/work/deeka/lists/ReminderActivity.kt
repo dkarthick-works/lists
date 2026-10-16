@@ -61,13 +61,19 @@ class ReminderActivity : Activity() {
         if (queue.isEmpty()) return finish()
         render()
         startAlert()
+        quietNotification()
     }
+
+    // The screen rings now, so the notification stops ringing and stays only
+    // as a way back here.
+    private fun quietNotification() = ReminderReceiver.notify(this, queue.map { it.id }, at, ringing = false)
 
     // Rang again while open (a second alarm, or the notification tapped).
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         add(intent)
         render()
+        quietNotification()
     }
 
     private fun add(intent: Intent) {
@@ -82,7 +88,7 @@ class ReminderActivity : Activity() {
         answered++
         lastAnswer = "${r.text}: $what"
         if (queue.isEmpty()) {
-            getSystemService(NotificationManager::class.java).cancel(ReminderReceiver.NOTIFICATION_ID)
+            ReminderReceiver.cancel(this)
             finish()
         } else {
             render()
