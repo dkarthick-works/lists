@@ -10,6 +10,16 @@ import (
 	"github.com/google/uuid"
 )
 
+type ListsApiKey struct {
+	ID         uuid.UUID  `json:"id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	Name       string     `json:"name"`
+	KeyHash    string     `json:"key_hash"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	RevokedAt  *time.Time `json:"revoked_at"`
+}
+
 type ListsItem struct {
 	ID          uuid.UUID  `json:"id"`
 	UserID      uuid.UUID  `json:"user_id"`
