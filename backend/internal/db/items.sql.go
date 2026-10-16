@@ -7,8 +7,10 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"lists/internal/wallclock"
 )
 
 const autocompleteLists = `-- name: AutocompleteLists :many
@@ -83,7 +85,7 @@ VALUES (
     $1, $2, $3, $4, $5,
     COALESCE((SELECT max(s.position) + 1 FROM lists.items s WHERE s.parent_id = $2), 0)
 )
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule
 `
 
 type CreateItemParams struct {
@@ -116,6 +118,8 @@ func (q *Queries) CreateItem(ctx context.Context, arg CreateItemParams) (ListsIt
 		&i.PinnedAt,
 		&i.CompletedAt,
 		&i.Body,
+		&i.RemindAt,
+		&i.RemindRule,
 	)
 	return i, err
 }
@@ -139,7 +143,7 @@ func (q *Queries) DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, 
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule FROM lists.items
 WHERE id = $1 AND user_id = $2
 `
 
@@ -163,6 +167,8 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (ListsItem, er
 		&i.PinnedAt,
 		&i.CompletedAt,
 		&i.Body,
+		&i.RemindAt,
+		&i.RemindRule,
 	)
 	return i, err
 }
@@ -213,7 +219,7 @@ func (q *Queries) ListAncestors(ctx context.Context, arg ListAncestorsParams) ([
 }
 
 const listEntries = `-- name: ListEntries :many
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule FROM lists.items
 WHERE parent_id = $1 AND user_id = $2
 ORDER BY completed_at NULLS FIRST, position, created_at, id
 `
@@ -245,6 +251,8 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Lis
 			&i.PinnedAt,
 			&i.CompletedAt,
 			&i.Body,
+			&i.RemindAt,
+			&i.RemindRule,
 		); err != nil {
 			return nil, err
 		}
@@ -257,7 +265,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Lis
 }
 
 const listRecent = `-- name: ListRecent :many
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule FROM lists.items
 WHERE user_id = $1 AND parent_id IS NULL AND pinned_at IS NULL
 ORDER BY updated_at DESC
 LIMIT 5
@@ -285,6 +293,55 @@ func (q *Queries) ListRecent(ctx context.Context, userID uuid.UUID) ([]ListsItem
 			&i.PinnedAt,
 			&i.CompletedAt,
 			&i.Body,
+			&i.RemindAt,
+			&i.RemindRule,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReminders = `-- name: ListReminders :many
+SELECT i.id, i.text, i.remind_at, i.remind_rule, i.completed_at, p.id AS list_id, p.text AS list_text
+FROM lists.items i
+JOIN lists.items p ON p.id = i.parent_id
+WHERE i.user_id = $1 AND i.remind_at IS NOT NULL
+ORDER BY i.remind_at, i.id
+`
+
+type ListRemindersRow struct {
+	ID          uuid.UUID      `json:"id"`
+	Text        string         `json:"text"`
+	RemindAt    wallclock.Time `json:"remind_at"`
+	RemindRule  *string        `json:"remind_rule"`
+	CompletedAt *time.Time     `json:"completed_at"`
+	ListID      uuid.UUID      `json:"list_id"`
+	ListText    string         `json:"list_text"`
+}
+
+// Every entry with a reminder, and the list it is in, for phones to schedule.
+func (q *Queries) ListReminders(ctx context.Context, userID uuid.UUID) ([]ListRemindersRow, error) {
+	rows, err := q.db.Query(ctx, listReminders, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRemindersRow{}
+	for rows.Next() {
+		var i ListRemindersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Text,
+			&i.RemindAt,
+			&i.RemindRule,
+			&i.CompletedAt,
+			&i.ListID,
+			&i.ListText,
 		); err != nil {
 			return nil, err
 		}
@@ -297,7 +354,7 @@ func (q *Queries) ListRecent(ctx context.Context, userID uuid.UUID) ([]ListsItem
 }
 
 const listTopLevel = `-- name: ListTopLevel :many
-SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body FROM lists.items
+SELECT id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule FROM lists.items
 WHERE user_id = $1 AND parent_id IS NULL
 ORDER BY lower(text), created_at
 `
@@ -323,6 +380,8 @@ func (q *Queries) ListTopLevel(ctx context.Context, userID uuid.UUID) ([]ListsIt
 			&i.PinnedAt,
 			&i.CompletedAt,
 			&i.Body,
+			&i.RemindAt,
+			&i.RemindRule,
 		); err != nil {
 			return nil, err
 		}
@@ -338,7 +397,7 @@ const makeItemList = `-- name: MakeItemList :one
 UPDATE lists.items
 SET is_list = true, updated_at = now()
 WHERE id = $1 AND user_id = $2 AND body IS NULL
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule
 `
 
 type MakeItemListParams struct {
@@ -361,6 +420,8 @@ func (q *Queries) MakeItemList(ctx context.Context, arg MakeItemListParams) (Lis
 		&i.PinnedAt,
 		&i.CompletedAt,
 		&i.Body,
+		&i.RemindAt,
+		&i.RemindRule,
 	)
 	return i, err
 }
@@ -417,7 +478,7 @@ UPDATE lists.items
 SET completed_at = CASE WHEN $3::boolean THEN COALESCE(completed_at, now()) END,
     updated_at = now()
 WHERE id = $1 AND user_id = $2 AND parent_id IS NOT NULL
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule
 `
 
 type SetCompletedParams struct {
@@ -443,6 +504,8 @@ func (q *Queries) SetCompleted(ctx context.Context, arg SetCompletedParams) (Lis
 		&i.PinnedAt,
 		&i.CompletedAt,
 		&i.Body,
+		&i.RemindAt,
+		&i.RemindRule,
 	)
 	return i, err
 }
@@ -451,7 +514,7 @@ const setPinned = `-- name: SetPinned :one
 UPDATE lists.items
 SET pinned_at = CASE WHEN $3::boolean THEN COALESCE(pinned_at, now()) END
 WHERE id = $1 AND user_id = $2 AND parent_id IS NULL AND is_list
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule
 `
 
 type SetPinnedParams struct {
@@ -477,6 +540,50 @@ func (q *Queries) SetPinned(ctx context.Context, arg SetPinnedParams) (ListsItem
 		&i.PinnedAt,
 		&i.CompletedAt,
 		&i.Body,
+		&i.RemindAt,
+		&i.RemindRule,
+	)
+	return i, err
+}
+
+const setReminder = `-- name: SetReminder :one
+UPDATE lists.items
+SET remind_at = $3, remind_rule = $4
+WHERE id = $1 AND user_id = $2 AND parent_id IS NOT NULL
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule
+`
+
+type SetReminderParams struct {
+	ID         uuid.UUID      `json:"id"`
+	UserID     uuid.UUID      `json:"user_id"`
+	RemindAt   wallclock.Time `json:"remind_at"`
+	RemindRule *string        `json:"remind_rule"`
+}
+
+// Only entries (items inside a list) can have a reminder. A null remind_at
+// clears it. Like pinning, this does not count as an edit.
+func (q *Queries) SetReminder(ctx context.Context, arg SetReminderParams) (ListsItem, error) {
+	row := q.db.QueryRow(ctx, setReminder,
+		arg.ID,
+		arg.UserID,
+		arg.RemindAt,
+		arg.RemindRule,
+	)
+	var i ListsItem
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ParentID,
+		&i.Text,
+		&i.IsList,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Position,
+		&i.PinnedAt,
+		&i.CompletedAt,
+		&i.Body,
+		&i.RemindAt,
+		&i.RemindRule,
 	)
 	return i, err
 }
@@ -502,7 +609,7 @@ const updateItemText = `-- name: UpdateItemText :one
 UPDATE lists.items
 SET text = $3, updated_at = now()
 WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule
 `
 
 type UpdateItemTextParams struct {
@@ -526,6 +633,8 @@ func (q *Queries) UpdateItemText(ctx context.Context, arg UpdateItemTextParams) 
 		&i.PinnedAt,
 		&i.CompletedAt,
 		&i.Body,
+		&i.RemindAt,
+		&i.RemindRule,
 	)
 	return i, err
 }
@@ -534,7 +643,7 @@ const updatePageBody = `-- name: UpdatePageBody :one
 UPDATE lists.items
 SET body = $3::text, updated_at = now()
 WHERE id = $1 AND user_id = $2 AND body IS NOT NULL
-RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body
+RETURNING id, user_id, parent_id, text, is_list, created_at, updated_at, position, pinned_at, completed_at, body, remind_at, remind_rule
 `
 
 type UpdatePageBodyParams struct {
@@ -558,6 +667,8 @@ func (q *Queries) UpdatePageBody(ctx context.Context, arg UpdatePageBodyParams) 
 		&i.PinnedAt,
 		&i.CompletedAt,
 		&i.Body,
+		&i.RemindAt,
+		&i.RemindRule,
 	)
 	return i, err
 }

@@ -130,3 +130,19 @@ SET text = sqlc.arg(title)
 WHERE user_id = sqlc.arg(user_id)
   AND (id = sqlc.arg(id) OR (parent_id = sqlc.arg(id) AND body IS NOT NULL))
   AND text = sqlc.arg(placeholder);
+
+-- name: SetReminder :one
+-- Only entries (items inside a list) can have a reminder. A null remind_at
+-- clears it. Like pinning, this does not count as an edit.
+UPDATE lists.items
+SET remind_at = sqlc.narg(remind_at), remind_rule = sqlc.narg(remind_rule)
+WHERE id = $1 AND user_id = $2 AND parent_id IS NOT NULL
+RETURNING *;
+
+-- name: ListReminders :many
+-- Every entry with a reminder, and the list it is in, for phones to schedule.
+SELECT i.id, i.text, i.remind_at, i.remind_rule, i.completed_at, p.id AS list_id, p.text AS list_text
+FROM lists.items i
+JOIN lists.items p ON p.id = i.parent_id
+WHERE i.user_id = $1 AND i.remind_at IS NOT NULL
+ORDER BY i.remind_at, i.id;
