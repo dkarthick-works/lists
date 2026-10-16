@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlarmManager
 import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -26,6 +27,25 @@ class MainActivity : Activity() {
     companion object {
         // Lives as long as the app's process, so each screen opens once per launch.
         private val askedThisLaunch = mutableSetOf<String>()
+
+        private const val EXTRA_LIST = "list"
+        private val listId = Regex("^[0-9a-f-]{36}$")
+
+        // Opens the app on a list, reusing the running app if there is one.
+        fun openList(ctx: Context, id: String): Intent =
+            Intent(ctx, MainActivity::class.java)
+                .putExtra(EXTRA_LIST, id)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    }
+
+    // The page to load for an intent. The activity is exported, so only a list
+    // id is taken from another app, never a URL or path.
+    private fun startUrl(intent: Intent): String? =
+        intent.getStringExtra(EXTRA_LIST)?.takeIf { listId.matches(it) }?.let { "${BuildConfig.BASE_URL}/lists/$it" }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        startUrl(intent)?.let { web.loadUrl(it) }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -68,7 +88,12 @@ class MainActivity : Activity() {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) { goBack() }
         }
 
-        if (savedInstanceState == null) web.loadUrl(BuildConfig.BASE_URL) else web.restoreState(savedInstanceState)
+        val list = startUrl(intent)
+        when {
+            list != null -> web.loadUrl(list)
+            savedInstanceState == null -> web.loadUrl(BuildConfig.BASE_URL)
+            else -> web.restoreState(savedInstanceState)
+        }
     }
 
     // The web app listens for this to send the phone any reminder changes made

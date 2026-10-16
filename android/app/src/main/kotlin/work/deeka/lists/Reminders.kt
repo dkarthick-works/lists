@@ -25,6 +25,7 @@ data class Reminder(
     val completed: Boolean,
     // How the web app words it, e.g. "Every week on Mon, Thu at 08:00".
     val summary: String,
+    val listId: String = "",
 )
 
 // The phone's copy of the reminders, and the single alarm that rings for them.
@@ -58,6 +59,7 @@ object Reminders {
                     rule = o.optString("remind_rule").takeIf { !o.isNull("remind_rule") && it.isNotEmpty() },
                     completed = !o.isNull("completed_at"),
                     summary = o.optString("summary"),
+                    listId = o.optString("list_id"),
                 )
             }.getOrNull()
         }

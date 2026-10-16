@@ -134,6 +134,18 @@ class ReminderActivity : Activity() {
             // The next time is already scheduled; nothing else to do.
             setOnClickListener { answer("dismissed") {} }
         }))
+        if (r.listId.isNotEmpty()) {
+            root.addView(cell("Open list\n${r.listText}").apply { setOnClickListener { openList(r) } }, match().apply { topMargin = -dp(1) })
+        }
+    }
+
+    // Counts as Dismiss: the next time stays scheduled. The app then covers this
+    // screen, so any reminders still queued stop ringing and wait in the
+    // notification, which brings them back.
+    private fun openList(r: Reminder) {
+        startActivity(MainActivity.openList(this, r.listId))
+        answer("dismissed") {}
+        if (queue.isNotEmpty()) stopAlert()
     }
 
     private fun snooze(minutes: Long) =
