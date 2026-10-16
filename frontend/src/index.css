@@ -620,3 +620,48 @@ label.inline-row {
 .page:has(.form-foot) {
   padding-bottom: calc(6rem + env(safe-area-inset-bottom));
 }
+
+/* Profile: sections sit well apart; groups inside a section a little apart. */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 2.75rem;
+}
+
+.settings .group {
+  margin-top: 0.5rem;
+}
+
+.settings .row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+/* Prose stays at a readable line length on wide screens. */
+.measure {
+  max-width: 65ch;
+}
+
+/* A value shown in full inside a row, e.g. the MCP endpoint. */
+.secret-inline {
+  overflow-wrap: break-word;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+/* Matches the label above a form field. */
+.field-label {
+  font-size: 0.85rem;
+}
+
+.copy-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The one-time key: set apart from the form that made it. */
+.reveal {
+  padding: 0.75rem;
+  border: 1px solid var(--ink);
+}
