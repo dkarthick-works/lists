@@ -20,7 +20,7 @@ func TestTitleAndPage(t *testing.T) {
 	}
 
 	for raw, want := range map[string]string{
-		"   ":                   "text is required",
+		"   ":                    "text is required",
 		strings.Repeat("a ", 30): "text is too long (limit 40 characters)",
 	} {
 		_, _, err := s.titleAndPage(raw)
