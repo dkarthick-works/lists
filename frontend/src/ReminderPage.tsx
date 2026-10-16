@@ -57,7 +57,27 @@ function Segments<T extends string>({
   );
 }
 
-const count = (raw: string) => Math.min(999, Math.max(1, Number(raw) || 1));
+// A whole number from 1 to 999 that can be cleared while typing: the rule only
+// takes valid values, and leaving the field empty puts the last one back.
+function CountInput({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      aria-label={label}
+      maxLength={3}
+      value={text}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/\D/g, "");
+        setText(digits);
+        if (Number(digits) >= 1) onChange(Number(digits));
+      }}
+      onBlur={() => setText(String(value))}
+    />
+  );
+}
 
 // Full-page form for an entry's reminder: when it first fires and how it repeats.
 export default function ReminderPage() {
@@ -188,14 +208,7 @@ export default function ReminderPage() {
           <>
             <label className="inline-row">
               Every
-              <input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={999}
-                value={rule.interval}
-                onChange={(e) => set({ interval: count(e.target.value) })}
-              />
+              <CountInput label="Repeat every" value={rule.interval} onChange={(interval) => set({ interval })} />
               {UNIT[rule.freq]}
               {rule.interval > 1 ? "s" : ""}
             </label>
@@ -250,13 +263,10 @@ export default function ReminderPage() {
               )}
               {rule.end.type === "count" && (
                 <label className="inline-row">
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    max={999}
+                  <CountInput
+                    label="Number of times"
                     value={rule.end.count}
-                    onChange={(e) => set({ end: { ...rule.end, count: count(e.target.value) } })}
+                    onChange={(count) => set({ end: { ...rule.end, count } })}
                   />
                   times
                 </label>
