@@ -4,3 +4,6 @@ dist/
 dev-dist/
 tmp/
 /backend/web/dist
+
+# graphify knowledge-graph output, regenerated locally
+graphify-out/
