@@ -1,6 +1,6 @@
 // Self-check for reminder.ts: node reminder.check.ts
 import assert from "node:assert/strict";
-import { aligned, fromStored, newRule, summary, toRRule, upcoming, type Rule } from "./src/reminder.ts";
+import { aligned, fromStored, newRule, quickDays, summary, toRRule, upcoming, type Rule } from "./src/reminder.ts";
 
 const now = new Date(2026, 9, 16, 12, 0); // Fri 16 Oct 2026, 12:00 local
 const rule = (patch: Partial<Rule>): Rule => ({ ...newRule("2026-10-17"), ...patch });
@@ -47,4 +47,16 @@ assert.deepEqual(upcoming(newRule("2026-10-16", "09:00"), 5, now), []);
 
 assert.equal(summary(rule({ freq: "WEEKLY", byday: ["MO", "TU", "WE", "TH", "FR"] }), now), "Every weekday at 08:00");
 assert.equal(summary(rule({}), now), "Tomorrow at 08:00");
+// Quick picks never repeat a day: Fri 16 Oct gives Sun instead of a second Saturday.
+const labels = (t: string) =>
+  quickDays(t)
+    .map(([l]) => l)
+    .join(" ");
+assert.equal(labels("2026-10-16"), "Today Tomorrow Sun Mon"); // Fri
+assert.equal(labels("2026-10-18"), "Today Tomorrow Tue Sat"); // Sun
+assert.equal(labels("2026-10-15"), "Today Tomorrow Sat Mon"); // Thu
+for (let i = 0; i < 7; i++) {
+  const days = quickDays(`2026-10-${12 + i}`).map(([, d]) => d);
+  assert.equal(new Set(days).size, 4);
+}
 console.log("reminder.ts ok");

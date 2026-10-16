@@ -10,9 +10,9 @@ import {
   DOW_NAME,
   fromStored,
   newRule,
-  nextWhere,
   nthInfo,
   ORD,
+  quickDays,
   summary,
   today,
   toRRule,
@@ -119,12 +119,7 @@ export default function ReminderPage() {
   const t = today();
   const info = nthInfo(rule.date);
   const next = upcoming(rule);
-  const chips: [string, string][] = [
-    ["Today", t],
-    ["Tomorrow", addDays(t, 1)],
-    ["Sat", nextWhere(addDays(t, 1), (s) => weekday(s) === 6)],
-    ["Mon", nextWhere(addDays(t, 1), (s) => weekday(s) === 1)],
-  ];
+  const chips = quickDays(t);
   const monthOptions: [MonthMode, string][] = [
     ["day", `On day ${info.day}`],
     ["nth", `On the ${ORD[info.n]} ${DOW_NAME[info.dow]}`],

@@ -46,6 +46,22 @@ export function nextWhere(from: string, pred: (s: string) => boolean) {
   return from;
 }
 
+// Quick picks under "When": today, tomorrow, and the coming Saturday and
+// Monday. A pick that lands on a day already shown moves to the next free day,
+// so the row always offers four different days, in date order.
+export function quickDays(t: string): [string, string][] {
+  const out: [string, string][] = [
+    ["Today", t],
+    ["Tomorrow", addDays(t, 1)],
+  ];
+  for (const dow of [6, 1]) {
+    let d = nextWhere(addDays(t, 1), (s) => weekday(s) === dow);
+    while (out.some(([, x]) => x === d)) d = addDays(d, 1);
+    out.push([DOW_NAME[weekday(d)], d]);
+  }
+  return [...out.slice(0, 2), ...out.slice(2).sort((a, b) => a[1].localeCompare(b[1]))];
+}
+
 // Which weekday of its month a date is: n is 1-5, last is true in the final week.
 export function nthInfo(s: string) {
   const d = parseD(s);
