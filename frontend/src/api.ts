@@ -215,3 +215,16 @@ export const lists = {
   makeList: (id: string) => request<Item>("PATCH", `/api/items/${id}`, { is_list: true }),
   remove: (id: string) => request<null>("DELETE", `/api/items/${id}`),
 };
+
+// Personal API keys for MCP clients. The raw key only comes back from createKey.
+export interface ApiKey {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export const listKeys = () => request<ApiKey[]>("GET", "/api/keys");
+export const createKey = (name: string) =>
+  request<Omit<ApiKey, "last_used_at"> & { key: string }>("POST", "/api/keys", { name });
+export const revokeKey = (id: string) => request<null>("DELETE", `/api/keys/${id}`);

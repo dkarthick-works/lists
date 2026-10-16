@@ -463,3 +463,41 @@ button.row-text {
 .page-edit textarea {
   min-height: 50vh;
 }
+
+/* API keys: a secret or command shown in full, wrapping inside its own box. */
+.secret {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ink);
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-right: 0.75rem;
+}
+
+.key-row > .row-text {
+  padding-right: 0;
+}
+
+.key-confirm {
+  padding: 0.7rem 0.75rem;
+}
+
+.inline-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.inline-form label {
+  flex: 1;
+  min-width: 0;
+}

@@ -63,7 +63,14 @@ func NewRouter(pool *pgxpool.Pool, verifier *auth.Verifier, authProxy http.Handl
 		r.Patch("/items/{id}", s.updateItem)
 		r.Put("/items/{id}/completed", s.setCompleted)
 		r.Delete("/items/{id}", s.deleteItem)
+		r.Get("/keys", s.listKeys)
+		r.Post("/keys", s.createKey)
+		r.Delete("/keys/{id}", s.revokeKey)
 	})
+
+	// MCP for agents, authenticated by personal API key. Handle matches every
+	// method, so the SPA fallback below never sees /mcp.
+	r.With(auth.KeyMiddleware(s.q.UserByKeyHash)).Handle("/mcp", s.mcpHandler())
 
 	if web.FS != nil {
 		r.NotFound(spaHandler(web.FS).ServeHTTP)

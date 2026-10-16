@@ -37,6 +37,25 @@ Goauth handles accounts. The browser only talks to this backend:
 The refresh cookie is `Secure`. Chrome and Firefox accept it on `http://localhost`;
 Safari does not, so in Safari a reload logs you out unless you serve over HTTPS.
 
+## MCP
+
+`/mcp` lets AI agents (Claude Code, Cursor, …) read and add to a user's lists over MCP
+(Streamable HTTP, stateless). Tools: `search_lists`, `list_lists`, `get_list`,
+`create_list` and `add_entry`. They call the same functions as the REST handlers, so long
+text still becomes a page.
+
+To connect, create a key under Profile → Developer settings and paste the command shown:
+
+```bash
+claude mcp add --transport http lists https://<host>/mcp --header "Authorization: Bearer lst_…"
+```
+
+Keys (`lst_…`) live in `lists.api_keys` as SHA-256 hashes; the raw key is shown once.
+They work only on `/mcp`, never on `/api`, and stop working when revoked. The MCP SDK
+rejects requests that reach `127.0.0.1` with a non-localhost `Host` (DNS-rebinding
+protection), so a reverse proxy on the same host must forward to a non-loopback address
+or keep the `Host` as localhost.
+
 ## Data model
 
 One table, `lists.items`, forms a tree: a list is an item with `is_list = true`, an entry
