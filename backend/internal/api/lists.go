@@ -24,33 +24,64 @@ const (
 	maxPinned = 5
 )
 
+// The handlers below are thin HTTP wrappers; the methods they call hold the
+// app rules so other callers (such as MCP tools) can share them.
+
+// errStatus is a failure the caller should see, with the HTTP status and
+// message it maps to.
+type errStatus struct {
+	status int
+	msg    string
+}
+
+func (e *errStatus) Error() string { return e.msg }
+
+var errListNotFound = &errStatus{http.StatusNotFound, "list not found"}
+
+// fail answers err with its own status if it is an errStatus, else 500.
+func fail(w http.ResponseWriter, err error) {
+	var e *errStatus
+	if errors.As(err, &e) {
+		writeError(w, e.status, e.msg)
+		return
+	}
+	serverError(w, err)
+}
+
 // listLists returns every top-level list.
 func (s *Server) listLists(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.q.ListTopLevel(r.Context(), auth.UserID(r.Context()))
+	rows, err := s.topLists(r.Context(), auth.UserID(r.Context()))
 	if err != nil {
-		serverError(w, err)
+		fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, rows)
 }
 
+func (s *Server) topLists(ctx context.Context, user uuid.UUID) ([]db.ListsItem, error) {
+	return s.q.ListTopLevel(ctx, user)
+}
+
 // autocompleteLists returns the best few list-title matches for ?q=.
 func (s *Server) autocompleteLists(w http.ResponseWriter, r *http.Request) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if q == "" || len([]rune(q)) > maxTextLen {
-		writeJSON(w, http.StatusOK, []db.AutocompleteListsRow{})
-		return
-	}
-	// The query is matched literally, so neutralise LIKE wildcards.
-	q = likeEscaper.Replace(q)
-	rows, err := s.q.AutocompleteLists(r.Context(), db.AutocompleteListsParams{
-		UserID: auth.UserID(r.Context()), Query: q,
-	})
+	rows, err := s.searchLists(r.Context(), auth.UserID(r.Context()), r.URL.Query().Get("q"))
 	if err != nil {
-		serverError(w, err)
+		fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, rows)
+}
+
+// searchLists returns the best few list-title matches for q.
+func (s *Server) searchLists(ctx context.Context, user uuid.UUID, q string) ([]db.AutocompleteListsRow, error) {
+	q = strings.TrimSpace(q)
+	if q == "" || len([]rune(q)) > maxTextLen {
+		return []db.AutocompleteListsRow{}, nil
+	}
+	// The query is matched literally, so neutralise LIKE wildcards.
+	return s.q.AutocompleteLists(ctx, db.AutocompleteListsParams{
+		UserID: user, Query: likeEscaper.Replace(q),
+	})
 }
 
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
@@ -64,8 +95,6 @@ func (s *Server) recentLists(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rows)
 }
 
-// createList makes a top-level list. Long text becomes a short title, with
-// the full text kept as a page inside the new list.
 func (s *Server) createList(w http.ResponseWriter, r *http.Request) {
 	body, ok := decode[struct {
 		Title string `json:"title"`
@@ -73,28 +102,38 @@ func (s *Server) createList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	title, page, ok := s.titleAndPage(w, r, body.Title)
-	if !ok {
-		return
-	}
-	var list db.ListsItem
-	err := s.inTx(r.Context(), func(q *db.Queries) error {
-		var err error
-		list, err = createList(r.Context(), q, auth.UserID(r.Context()), nil, title, page)
-		return err
-	})
+	list, err := s.newList(r.Context(), auth.UserID(r.Context()), body.Title)
 	if err != nil {
-		serverError(w, err)
+		fail(w, err)
 		return
-	}
-	if page != nil {
-		s.retitle(list.UserID, list.ID, title, *page)
 	}
 	writeJSON(w, http.StatusCreated, list)
 }
 
-// createList inserts a list and, when page is set, a page inside it.
-func createList(ctx context.Context, q *db.Queries, user uuid.UUID, parent *uuid.UUID, title string, page *string) (db.ListsItem, error) {
+// newList makes a top-level list. Long text becomes a short title, with the
+// full text kept as a page inside the new list.
+func (s *Server) newList(ctx context.Context, user uuid.UUID, text string) (db.ListsItem, error) {
+	title, page, err := s.titleAndPage(text)
+	if err != nil {
+		return db.ListsItem{}, err
+	}
+	var list db.ListsItem
+	err = s.inTx(ctx, func(q *db.Queries) error {
+		var err error
+		list, err = insertList(ctx, q, user, nil, title, page)
+		return err
+	})
+	if err != nil {
+		return db.ListsItem{}, err
+	}
+	if page != nil {
+		s.retitle(user, list.ID, title, *page)
+	}
+	return list, nil
+}
+
+// insertList inserts a list and, when page is set, a page inside it.
+func insertList(ctx context.Context, q *db.Queries, user uuid.UUID, parent *uuid.UUID, title string, page *string) (db.ListsItem, error) {
 	list, err := q.CreateItem(ctx, db.CreateItemParams{UserID: user, ParentID: parent, Text: title, IsList: true})
 	if err != nil || page == nil {
 		return list, err
@@ -107,25 +146,23 @@ func createList(ctx context.Context, q *db.Queries, user uuid.UUID, parent *uuid
 // used as typed (page is nil). Text over the word threshold, or too long for
 // a title, becomes a page: the full text, titled with its opening words until
 // retitle replaces that.
-func (s *Server) titleAndPage(w http.ResponseWriter, r *http.Request, raw string) (title string, page *string, ok bool) {
+func (s *Server) titleAndPage(raw string) (title string, page *string, err error) {
 	text := strings.TrimSpace(raw)
 	if text == "" {
-		writeError(w, http.StatusUnprocessableEntity, "text is required")
-		return "", nil, false
+		return "", nil, &errStatus{http.StatusUnprocessableEntity, "text is required"}
 	}
 	runes := len([]rune(text))
 	if len(strings.Fields(text)) <= s.pages.WordThreshold && runes <= maxTextLen {
-		return text, nil, true
+		return text, nil, nil
 	}
 	if runes > s.pages.MaxChars {
-		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("text is too long (limit %d characters)", s.pages.MaxChars))
-		return "", nil, false
+		return "", nil, &errStatus{http.StatusUnprocessableEntity, fmt.Sprintf("text is too long (limit %d characters)", s.pages.MaxChars)}
 	}
 	title = titler.Truncate(text, s.pages.InitialTitleWords)
 	if r := []rune(title); len(r) > maxTextLen {
 		title = string(r[:maxTextLen])
 	}
-	return title, &text, true
+	return title, &text, nil
 }
 
 // retitle asks the model for a proper title in the background and swaps it
@@ -148,31 +185,43 @@ func (s *Server) retitle(user, id uuid.UUID, placeholder, text string) {
 }
 
 func (s *Server) getList(w http.ResponseWriter, r *http.Request) {
-	user := auth.UserID(r.Context())
-	list, ok := s.loadList(w, r, user)
+	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
-	entries, err := s.q.ListEntries(r.Context(), db.ListEntriesParams{ParentID: &list.ID, UserID: user})
+	view, err := s.openList(r.Context(), auth.UserID(r.Context()), id)
 	if err != nil {
-		serverError(w, err)
+		fail(w, err)
 		return
 	}
-	ancestors, err := s.q.ListAncestors(r.Context(), db.ListAncestorsParams{ID: list.ID, UserID: user})
+	writeJSON(w, http.StatusOK, view)
+}
+
+// listView is a list with its entries and the lists above it.
+type listView struct {
+	Ancestors []db.ListAncestorsRow `json:"ancestors"`
+	Entries   []db.ListsItem        `json:"entries"`
+	List      db.ListsItem          `json:"list"`
+}
+
+func (s *Server) openList(ctx context.Context, user, id uuid.UUID) (listView, error) {
+	list, err := s.list(ctx, user, id)
 	if err != nil {
-		serverError(w, err)
-		return
+		return listView{}, err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"list":      list,
-		"entries":   entries,
-		"ancestors": ancestors,
-	})
+	entries, err := s.q.ListEntries(ctx, db.ListEntriesParams{ParentID: &list.ID, UserID: user})
+	if err != nil {
+		return listView{}, err
+	}
+	ancestors, err := s.q.ListAncestors(ctx, db.ListAncestorsParams{ID: list.ID, UserID: user})
+	if err != nil {
+		return listView{}, err
+	}
+	return listView{List: list, Entries: entries, Ancestors: ancestors}, nil
 }
 
 func (s *Server) createEntry(w http.ResponseWriter, r *http.Request) {
-	user := auth.UserID(r.Context())
-	list, ok := s.loadList(w, r, user)
+	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
@@ -183,34 +232,48 @@ func (s *Server) createEntry(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	title, page, ok := s.titleAndPage(w, r, body.Text)
-	if !ok {
+	item, err := s.addEntry(r.Context(), auth.UserID(r.Context()), id, body.Text, body.IsList)
+	if err != nil {
+		fail(w, err)
 		return
+	}
+	writeJSON(w, http.StatusCreated, item)
+}
+
+// addEntry adds an entry, or a sublist when isList, to the end of a list.
+// Long text becomes a page, as in newList.
+func (s *Server) addEntry(ctx context.Context, user, listID uuid.UUID, text string, isList bool) (db.ListsItem, error) {
+	list, err := s.list(ctx, user, listID)
+	if err != nil {
+		return db.ListsItem{}, err
+	}
+	title, page, err := s.titleAndPage(text)
+	if err != nil {
+		return db.ListsItem{}, err
 	}
 
 	var item db.ListsItem
-	err := s.inTx(r.Context(), func(q *db.Queries) error {
+	err = s.inTx(ctx, func(q *db.Queries) error {
 		var err error
-		if body.IsList {
-			item, err = createList(r.Context(), q, user, &list.ID, title, page)
+		if isList {
+			item, err = insertList(ctx, q, user, &list.ID, title, page)
 		} else {
-			item, err = q.CreateItem(r.Context(), db.CreateItemParams{
+			item, err = q.CreateItem(ctx, db.CreateItemParams{
 				UserID: user, ParentID: &list.ID, Text: title, Body: page,
 			})
 		}
 		if err != nil {
 			return err
 		}
-		return q.TouchWithAncestors(r.Context(), list.ID)
+		return q.TouchWithAncestors(ctx, list.ID)
 	})
 	if err != nil {
-		serverError(w, err)
-		return
+		return db.ListsItem{}, err
 	}
 	if page != nil {
 		s.retitle(user, item.ID, title, *page)
 	}
-	writeJSON(w, http.StatusCreated, item)
+	return item, nil
 }
 
 // getPage returns a page with the lists above it.
@@ -463,16 +526,22 @@ func (s *Server) loadList(w http.ResponseWriter, r *http.Request, user uuid.UUID
 	if !ok {
 		return db.ListsItem{}, false
 	}
-	item, err := s.q.GetItem(r.Context(), db.GetItemParams{ID: id, UserID: user})
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !item.IsList) {
-		writeError(w, http.StatusNotFound, "list not found")
-		return db.ListsItem{}, false
-	}
+	item, err := s.list(r.Context(), user, id)
 	if err != nil {
-		serverError(w, err)
+		fail(w, err)
 		return db.ListsItem{}, false
 	}
 	return item, true
+}
+
+// list fetches the user's list id, failing with errListNotFound for a
+// missing item or a plain entry.
+func (s *Server) list(ctx context.Context, user, id uuid.UUID) (db.ListsItem, error) {
+	item, err := s.q.GetItem(ctx, db.GetItemParams{ID: id, UserID: user})
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !item.IsList) {
+		return db.ListsItem{}, errListNotFound
+	}
+	return item, err
 }
 
 func (s *Server) inTx(ctx context.Context, fn func(q *db.Queries) error) error {
