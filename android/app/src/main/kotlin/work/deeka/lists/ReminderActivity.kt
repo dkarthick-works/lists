@@ -110,7 +110,7 @@ class ReminderActivity : Activity() {
         root.addView(View(this), LinearLayout.LayoutParams(-1, 0, 1f))
         val time = DateTimeFormatter.ofPattern("HH:mm").format(Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()))
         root.addView(label(listOf(time, r.listText).filter { it.isNotEmpty() }.joinToString(" · "), 13f))
-        root.addView(label(r.text, 30f).apply { setTypeface(Typeface.MONOSPACE, Typeface.BOLD) }, match().apply { topMargin = dp(4) })
+        root.addView(label(r.text, 30f).apply { setTypeface(mono, Typeface.BOLD) }, match().apply { topMargin = dp(4) })
         if (r.summary.isNotEmpty()) root.addView(label(r.summary, 13f).apply { alpha = 0.55f }, match().apply { topMargin = dp(6) })
         root.addView(View(this), LinearLayout.LayoutParams(-1, 0, 1f))
 
@@ -179,6 +179,9 @@ class ReminderActivity : Activity() {
 
     // Views, in the web app's style: black on white, monospace, square 1dp borders.
 
+    // The web app's monospace look. Bundled, as some phones replace the system monospace font.
+    private val mono by lazy { resources.getFont(R.font.noto_sans_mono) }
+
     private fun dp(v: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()
 
     private fun match() = LinearLayout.LayoutParams(-1, -2)
@@ -192,7 +195,7 @@ class ReminderActivity : Activity() {
         this.text = text
         setTextColor(Color.BLACK)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
-        typeface = Typeface.MONOSPACE
+        typeface = mono
     }
 
     private fun TextView.caps() = apply {
@@ -208,7 +211,7 @@ class ReminderActivity : Activity() {
     private fun cell(text: String, primary: Boolean = false) = label(text, 16f).apply {
         gravity = Gravity.CENTER
         minHeight = dp(88)
-        if (primary) setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+        if (primary) setTypeface(mono, Typeface.BOLD)
         setTextColor(if (primary) Color.WHITE else Color.BLACK)
         background = border(if (primary) Color.BLACK else Color.WHITE)
         isClickable = true
