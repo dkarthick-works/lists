@@ -86,14 +86,14 @@ export function InlineEdit({
   );
 }
 
-// A plain entry: tap to edit in place.
+// A plain entry: double-tap to edit in place.
 function EntryRow({ entry, onChange }: { entry: Item; onChange: (action: () => Promise<unknown>) => void }) {
   const [editing, setEditing] = useState(false);
   if (!editing) {
     return (
-      <button className="row-text" onClick={() => setEditing(true)}>
+      <DoubleTapButton className="row-text" title="Double-tap to edit" onDoubleTap={() => setEditing(true)}>
         {entry.text}
-      </button>
+      </DoubleTapButton>
     );
   }
   return (
