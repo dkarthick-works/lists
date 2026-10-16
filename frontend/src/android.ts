@@ -1,9 +1,11 @@
 import { lists } from "./api";
+import { fromStored, summary } from "./reminder";
 
 // The Android shell adds window.Android (see ReminderBridge.kt). In a browser it
 // is missing and reminders are not offered: a web page cannot ring an alarm.
 interface Bridge {
-  // Every reminder, as GET /api/reminders returns them; the phone reschedules.
+  // Every reminder, as GET /api/reminders returns them plus a summary line
+  // ("Every week on Mon at 08:00") for the reminder screen; the phone reschedules.
   setReminders(json: string): void;
   // Ids of entries ticked off from the reminder screen, not yet sent here.
   pendingDone(): string;
@@ -26,7 +28,8 @@ export function syncReminders(): Promise<void> {
       const done: string[] = JSON.parse(b.pendingDone() || "[]");
       // A deleted entry (404) has nothing left to complete.
       await Promise.all(done.map((id) => lists.setCompleted(id, true).catch(() => {})));
-      b.setReminders(JSON.stringify(await lists.reminders()));
+      const all = await lists.reminders();
+    b.setReminders(JSON.stringify(all.map((r) => ({ ...r, summary: summary(fromStored(r.remind_at, r.remind_rule)) }))));
     })
     .catch(() => {}); // offline: the next sync catches up
   return queue;

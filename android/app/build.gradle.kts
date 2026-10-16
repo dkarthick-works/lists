@@ -45,3 +45,9 @@ android {
         jvmTarget = "17"
     }
 }
+
+dependencies {
+    // RFC 5545 recurrence rules, for when a repeating reminder next rings.
+    implementation("org.dmfs:lib-recur:0.17.1")
+    testImplementation("junit:junit:4.13.2")
+}
