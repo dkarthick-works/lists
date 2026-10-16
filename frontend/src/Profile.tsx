@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ApiKeys from "./ApiKeys";
 import { logout, me } from "./api";
 
 export default function Profile({ onLogout }: { onLogout: () => void }) {
@@ -17,6 +18,7 @@ export default function Profile({ onLogout }: { onLogout: () => void }) {
         <h2>Signed in as</h2>
         <p className={email ? undefined : "muted"}>{email || "Loading…"}</p>
       </section>
+      <ApiKeys />
       <div>
         <button
           onClick={async () => {
