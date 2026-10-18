@@ -1,4 +1,5 @@
-/* Black and white only, square corners everywhere. */
+/* Black, white and grey only. Solid blocks instead of outlines, square corners
+   everywhere. Grey is a surface, black is emphasis or "on", white is the page. */
 *,
 *::before,
 *::after {
@@ -9,6 +10,14 @@
 :root {
   --ink: #000;
   --paper: #fff;
+  /* Resting surface for rows, fields and buttons. */
+  --grey: #ececec;
+  /* The same surface under the pointer. */
+  --grey-2: #dcdcdc;
+  /* Secondary text; readable on both white and --grey. */
+  --mute: #666;
+  /* Blocks sit this far apart; the page shows through as the divider. */
+  --gap: 2px;
   color-scheme: light;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 16px;
@@ -22,18 +31,36 @@ body {
   color: var(--ink);
 }
 
-h1,
-h2 {
+::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+h1 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.6rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
 
+/* Section labels lead with a solid square. */
 h2 {
-  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 0.5rem;
+  letter-spacing: 0.1em;
+}
+
+h2::before {
+  content: "";
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  background: currentColor;
 }
 
 p {
@@ -45,16 +72,16 @@ a {
 }
 
 .muted {
-  opacity: 0.55;
+  color: var(--mute);
 }
 
-/* Layout */
+/* Layout: a white bar over the page, closed by a solid black rule. */
 .bar {
   position: sticky;
   top: 0;
   z-index: 3;
   background: var(--paper);
-  border-bottom: 1px solid var(--ink);
+  border-bottom: var(--gap) solid var(--ink);
   padding-top: env(safe-area-inset-top);
 }
 
@@ -78,24 +105,38 @@ a {
   touch-action: manipulation;
 }
 
+.bar button[aria-expanded="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* The wordmark is a black block, like a label stuck on the page. */
 .brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  background: var(--ink);
+  color: var(--paper);
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   text-decoration: none;
 }
 
-/* Side nav: slides over the page from the right, below the top bar. */
+/* Side nav: a black panel sliding over the page from the right, below the bar. */
 .sidenav {
   position: fixed;
-  top: calc(3.75rem + 1px + env(safe-area-inset-top));
+  top: calc(3.75rem + var(--gap) + env(safe-area-inset-top));
   bottom: 0;
   right: 0;
   z-index: 2;
   width: min(16rem, 80vw);
   display: flex;
   flex-direction: column;
-  background: var(--paper);
-  border-left: 1px solid var(--ink);
-  padding-right: env(safe-area-inset-right);
+  gap: var(--gap);
+  padding: var(--gap) env(safe-area-inset-right) 0 var(--gap);
+  background: var(--ink);
 }
 
 .sidenav[hidden] {
@@ -103,27 +144,29 @@ a {
 }
 
 .sidenav a {
-  padding: 0.9rem 1rem;
+  padding: 1rem;
+  color: var(--paper);
+  font-size: 1.1rem;
+  font-weight: 700;
   text-decoration: none;
-  border-bottom: 1px solid var(--ink);
 }
 
 .sidenav a.active {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
 }
 
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 1;
-  background: rgb(255 255 255 / 0.7);
+  background: rgb(0 0 0 / 0.3);
 }
 
 .page {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.75rem;
   max-width: 44rem;
   margin: 0 auto;
   padding: 1.25rem 1rem calc(2rem + env(safe-area-inset-bottom));
@@ -134,20 +177,32 @@ a {
   padding-top: 12vh;
 }
 
+/* Sign-in and offline screens: the wordmark, large. */
+.page.narrow > h1 {
+  align-self: flex-start;
+  padding: 0.4rem 0.9rem;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
 .stack {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-/* Controls — 16px text so iOS does not zoom on focus, 44px tap targets. */
+/* Controls are solid grey blocks with no outline. 16px text so iOS does not
+   zoom on focus, 44px tap targets. */
 input,
 textarea,
 button {
   font: inherit;
   color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--ink);
+  background: var(--grey);
+  border: 0;
   min-height: 2.75rem;
   -webkit-appearance: none;
   appearance: none;
@@ -158,6 +213,20 @@ textarea {
   width: 100%;
   min-width: 0;
   padding: 0 0.75rem;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--mute);
+  opacity: 1;
+}
+
+/* A field being typed in turns white inside a black frame. */
+input:focus,
+textarea:focus {
+  background: var(--paper);
+  outline: var(--gap) solid var(--ink);
+  outline-offset: calc(-1 * var(--gap));
 }
 
 textarea {
@@ -182,36 +251,50 @@ button {
 button.primary {
   background: var(--ink);
   color: var(--paper);
+  font-weight: 700;
 }
 
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: default;
 }
 
 button.link {
-  border: 0;
+  background: none;
   padding: 0;
   min-height: 2.75rem;
   text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
-/* Focus thickens the existing border instead of drawing a second line around it. */
 :focus-visible {
-  outline: 1px solid var(--ink);
-  outline-offset: 0;
+  outline: var(--gap) solid var(--ink);
+  outline-offset: calc(-1 * var(--gap));
 }
 
-button.primary:focus-visible {
+button.primary:focus-visible,
+.menu :focus-visible,
+.tiles :focus-visible,
+.sidenav :focus-visible,
+.brand:focus-visible {
   outline-color: var(--paper);
-  outline-offset: -3px;
+  outline-offset: -4px;
 }
 
 label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.85rem;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+label input,
+label textarea {
+  font-size: 1rem;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .links {
@@ -220,16 +303,18 @@ label {
   gap: 0 1.25rem;
 }
 
-/* Rows */
+/* Rows: grey blocks stacked with a sliver of page between them. */
 .rows {
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
 }
 
-.rows li + li {
-  border-top: 1px solid var(--ink);
+.rows > li {
+  background: var(--grey);
 }
 
 .row-link,
@@ -237,7 +322,7 @@ label {
   display: block;
   flex: 1;
   min-width: 0;
-  padding: 0.7rem 0.75rem;
+  padding: 0.8rem 0.85rem;
   overflow-wrap: anywhere;
 }
 
@@ -246,15 +331,48 @@ label {
   font-weight: 700;
 }
 
+/* Buttons sitting on a grey row are white so they read as separate blocks. */
+.rows button:not(.icon):not(.row-text):not(.primary) {
+  background: var(--paper);
+}
+
+/* Pinned lists: black tiles, two to a row, name at the bottom. */
+.rows.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.tiles > li {
+  min-height: 6rem;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.tiles > li:last-child:nth-child(odd) {
+  grid-column: span 2;
+}
+
+.tiles .entry {
+  align-items: flex-start;
+}
+
+.tiles .row-link {
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  color: var(--paper);
+}
+
 .title {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
 }
 
 .title h1 {
   min-width: 0;
+  padding-top: 0.35rem;
 }
 
 button.icon {
@@ -263,15 +381,17 @@ button.icon {
   justify-content: center;
   width: 2.75rem;
   padding: 0;
-  border: 0;
+  background: none;
+  color: inherit;
 }
 
 /* The list name is a plain-looking button: double-tap it to rename. */
 button.rename {
-  border: 0;
+  background: none;
   padding: 0;
   min-height: 0;
   font-weight: inherit;
+  letter-spacing: inherit;
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -279,14 +399,15 @@ button.rename {
 }
 
 .title input {
-  font-size: 1.25rem;
+  font-size: 1.6rem;
   font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 /* Entry rows are buttons that look like text until double-tapped. */
 button.row-text {
   width: 100%;
-  border: 0;
+  background: none;
   min-height: 0;
   text-align: left;
   white-space: normal;
@@ -301,30 +422,42 @@ button.row-text {
 
 .entry .row-input {
   flex: 1;
-  border: 0;
 }
 
 .entry > button.icon {
   font-size: 1.25rem;
 }
 
-/* The ⋯ menu drops down from the right end of its row. */
+/* The ⋯ menu: a black strip dropping down from the right end of its row. */
 .menu {
   position: absolute;
   top: 100%;
-  right: -1px;
+  right: 0;
   z-index: 2;
   display: flex;
-  background: var(--paper);
-  border: 1px solid var(--ink);
+  gap: var(--gap);
+  padding: var(--gap);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .menu button {
   font-size: 1.1rem;
 }
 
-.menu button + button {
-  border-left: 1px solid var(--ink);
+.menu button.on {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.entry:has(.menu) {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.entry:has(.menu) .row-link,
+.entry:has(.menu) .row-text {
+  color: var(--paper);
 }
 
 .menu-backdrop {
@@ -334,31 +467,71 @@ button.row-text {
 }
 
 .crumbs {
-  font-size: 0.85rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mute);
   overflow-wrap: anywhere;
 }
 
+.crumbs a {
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 700;
+}
+
 @media (hover: hover) {
-  .row-link:hover,
-  button:not(.primary):not(.link):not(.rename):not(.row-text):hover {
+  .rows > li:hover {
+    background: var(--grey-2);
+  }
+
+  .tiles > li:hover,
+  .entry:has(.menu):hover {
+    background: var(--ink);
+  }
+
+  .crumbs a:hover {
+    text-decoration: underline;
+  }
+
+  button:not(.primary):not(.link):not(.rename):not(.row-text):not(:disabled):hover,
+  .rows button:not(.icon):not(.row-text):not(.primary):not(:disabled):hover {
     background: var(--ink);
     color: var(--paper);
   }
+
+  button.primary:not(:disabled):hover {
+    background: var(--mute);
+  }
+
+  /* On black, hovering turns a button white instead. */
+  .tiles button:not(:disabled):hover,
+  .menu button:not(:disabled):hover,
+  .entry:has(.menu) > button.icon:hover {
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  .sidenav a:not(.active):hover {
+    background: var(--mute);
+  }
 }
 
-/* Chat-style composer: fixed to the bottom edge, aligned with the page column. */
+/* Chat-style composer: fixed to the bottom edge, aligned with the page column,
+   opened by the same black rule that closes the top bar. */
 .composer {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   background: var(--paper);
-  border-top: 1px solid var(--ink);
+  border-top: var(--gap) solid var(--ink);
 }
 
 .composer > div {
   display: flex;
-  gap: 0.5rem;
+  align-items: flex-end;
+  gap: var(--gap);
   max-width: 44rem;
   margin: 0 auto;
   padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
@@ -366,8 +539,14 @@ button.row-text {
 
 .composer button {
   width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   font-size: 1.25rem;
+}
+
+/* The composer field grows with long text, then scrolls. */
+.composer textarea {
+  max-height: 40vh;
 }
 
 /* Keep the last rows clear of the composer. */
@@ -375,14 +554,14 @@ button.row-text {
   padding-bottom: calc(6rem + env(safe-area-inset-bottom));
 }
 
-/* Search autocomplete: a dropdown hanging off the bottom edge of the field. */
+/* Search autocomplete: a black-framed dropdown hanging off the field. */
 .search {
   position: relative;
 }
 
 .suggestions {
   position: absolute;
-  top: calc(100% - 1px);
+  top: 100%;
   left: 0;
   right: 0;
   z-index: 2;
@@ -390,13 +569,14 @@ button.row-text {
   margin: 0;
   padding: 0;
   background: var(--paper);
-  border: 1px solid var(--ink);
+  border: var(--gap) solid var(--ink);
+  border-top: 0;
   max-height: 60vh;
   overflow-y: auto;
 }
 
 .suggestions li {
-  padding: 0.7rem 0.75rem;
+  padding: 0.8rem 0.85rem;
   overflow-wrap: anywhere;
   cursor: pointer;
 }
@@ -405,12 +585,8 @@ button.row-text {
   cursor: default;
 }
 
-.suggestions li + li {
-  border-top: 1px solid var(--ink);
-}
-
 .suggestions .parent {
-  opacity: 0.55;
+  color: var(--mute);
 }
 
 .suggestions li[aria-selected="true"] {
@@ -418,57 +594,52 @@ button.row-text {
   color: var(--paper);
 }
 
+.suggestions li[aria-selected="true"] .parent {
+  color: inherit;
+  opacity: 0.65;
+}
+
 .confirm-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--gap);
 }
 
 .confirm-actions button {
   flex: 1;
 }
 
-/* Completed entries: greyed out and struck through. */
+/* Completed entries drop out of their grey block: struck through on white. */
+.rows > li.completed {
+  background: var(--paper);
+}
+
 .entry.completed .row-text,
 .entry.completed .row-link {
-  opacity: 0.45;
+  color: var(--mute);
   text-decoration: line-through;
 }
 
-/* A menu toggle that is currently on. */
-.menu button.on {
+.entry.completed:has(.menu) {
   background: var(--ink);
-  color: var(--paper);
-}
-
-/* The composer field grows with long text, then scrolls. */
-.composer textarea {
-  max-height: 40vh;
-}
-
-.composer > div {
-  align-items: flex-end;
-}
-
-.composer button {
-  height: 2.75rem;
 }
 
 /* Page: long-form text shown as written. */
 .page-body {
+  max-width: 65ch;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
 .page-edit textarea {
   min-height: 50vh;
 }
 
-/* API keys: a secret or command shown in full, wrapping inside its own box. */
+/* API keys: a secret or command shown in full, wrapping inside its own block. */
 .secret {
   margin: 0;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--ink);
+  padding: 0.75rem 0.85rem;
+  background: var(--grey);
   font: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -488,13 +659,13 @@ button.row-text {
 }
 
 .key-confirm {
-  padding: 0.7rem 0.75rem;
+  padding: 0.85rem;
 }
 
 .inline-form {
   display: flex;
   align-items: flex-end;
-  gap: 0.5rem;
+  gap: var(--gap);
 }
 
 .inline-form label {
@@ -514,10 +685,14 @@ button.row-text {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  margin-top: -0.45rem;
-  padding: 0 0.75rem 0.6rem;
+  margin-top: -0.5rem;
+  padding: 0 0.85rem 0.7rem;
   font-size: 0.75rem;
-  opacity: 0.65;
+  color: var(--mute);
+}
+
+.entry:has(.menu) .remind-tag {
+  color: inherit;
 }
 
 .remind-tag svg {
@@ -531,24 +706,25 @@ button.row-text {
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: var(--gap);
 }
 
 .chips button {
-  min-height: 2.25rem;
-  padding: 0 0.6rem;
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
   font-size: 0.85rem;
 }
 
 .pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
+  gap: var(--gap);
 }
 
-/* Joined toggle buttons: a segmented control and the row of weekdays. */
+/* Toggle buttons in a row: a segmented control and the row of weekdays. */
 .seg {
   display: flex;
+  gap: var(--gap);
 }
 
 .seg button {
@@ -561,15 +737,11 @@ button.row-text {
 .days {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  gap: var(--gap);
 }
 
 .days button {
   padding: 0;
-}
-
-.seg button + button,
-.days button + button {
-  margin-left: -1px;
 }
 
 .seg button.on,
@@ -584,6 +756,8 @@ label.inline-row {
   align-items: center;
   gap: 0.5rem;
   font-size: 1rem;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .inline-row input {
@@ -591,7 +765,15 @@ label.inline-row {
   flex: none;
 }
 
+/* The reminder summary: a black block, the answer to the whole form. */
+.panel {
+  padding: 1rem;
+  background: var(--ink);
+  color: var(--paper);
+}
+
 .summary {
+  font-size: 1.1rem;
   font-weight: 700;
 }
 
@@ -608,7 +790,7 @@ label.inline-row {
   right: 0;
   bottom: 0;
   background: var(--paper);
-  border-top: 1px solid var(--ink);
+  border-top: var(--gap) solid var(--ink);
 }
 
 .form-foot > div {
@@ -652,7 +834,9 @@ label.inline-row {
 
 /* Matches the label above a form field. */
 .field-label {
-  font-size: 0.85rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .copy-row {
@@ -660,8 +844,8 @@ label.inline-row {
   justify-content: flex-end;
 }
 
-/* The one-time key: set apart from the form that made it. */
+/* The one-time key: framed apart from the form that made it. */
 .reveal {
-  padding: 0.75rem;
-  border: 1px solid var(--ink);
+  padding: 1rem;
+  border: var(--gap) solid var(--ink);
 }

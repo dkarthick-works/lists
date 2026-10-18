@@ -236,7 +236,7 @@ export default function ReminderPage() {
               />
             )}
             <div className="stack">
-              <span className="small">Ends</span>
+              <span className="field-label">Ends</span>
               <Segments<EndType>
                 label="Ends"
                 value={rule.end.type}
@@ -271,7 +271,7 @@ export default function ReminderPage() {
         )}
       </section>
 
-      <section className="stack">
+      <section className="stack panel">
         <h2>Summary</h2>
         <p className="summary">{summary(rule)}</p>
         {next.length ? (
