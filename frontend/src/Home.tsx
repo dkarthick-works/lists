@@ -21,16 +21,19 @@ function ListLinks({
   empty,
   onPin,
   pinsFull,
+  tiles = false,
 }: {
   items: Item[];
   empty: string;
   onPin: (item: Item) => void;
   // True once the pin limit is reached: unpinned rows can no longer be pinned.
   pinsFull: boolean;
+  // Pinned lists show as a grid of tiles rather than rows.
+  tiles?: boolean;
 }) {
   if (items.length === 0) return <p className="muted">{empty}</p>;
   return (
-    <ul className="rows">
+    <ul className={tiles ? "rows tiles" : "rows"}>
       {items.map((l) => (
         <li key={l.id} className="entry">
           <Link to={`/lists/${l.id}`} className="row-link">
@@ -107,7 +110,7 @@ export default function Home() {
       {pinned.length > 0 && (
         <section>
           <h2>Pinned</h2>
-          <ListLinks items={pinned} empty="" onPin={togglePin} pinsFull={pinsFull} />
+          <ListLinks items={pinned} empty="" onPin={togglePin} pinsFull={pinsFull} tiles />
         </section>
       )}
       <section>

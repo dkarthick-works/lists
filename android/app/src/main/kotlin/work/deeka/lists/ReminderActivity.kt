@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -111,7 +110,7 @@ class ReminderActivity : Activity() {
         val time = DateTimeFormatter.ofPattern("HH:mm").format(Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()))
         root.addView(label(listOf(time, r.listText).filter { it.isNotEmpty() }.joinToString(" · "), 13f))
         root.addView(label(r.text, 30f).apply { setTypeface(mono, Typeface.BOLD) }, match().apply { topMargin = dp(4) })
-        if (r.summary.isNotEmpty()) root.addView(label(r.summary, 13f).apply { alpha = 0.55f }, match().apply { topMargin = dp(6) })
+        if (r.summary.isNotEmpty()) root.addView(label(r.summary, 13f).apply { setTextColor(MUTE) }, match().apply { topMargin = dp(6) })
         root.addView(View(this), LinearLayout.LayoutParams(-1, 0, 1f))
 
         // Done takes two taps within 300ms, like the app's delete buttons, so a
@@ -135,7 +134,7 @@ class ReminderActivity : Activity() {
             setOnClickListener { answer("dismissed") {} }
         }))
         if (r.listId.isNotEmpty()) {
-            root.addView(cell("Open list\n${r.listText}").apply { setOnClickListener { openList(r) } }, match().apply { topMargin = -dp(1) })
+            root.addView(cell("Open list\n${r.listText}").apply { setOnClickListener { openList(r) } }, match().apply { topMargin = gap })
         }
     }
 
@@ -189,7 +188,7 @@ class ReminderActivity : Activity() {
         super.onDestroy()
     }
 
-    // Views, in the web app's style: black on white, monospace, square 1dp borders.
+    // Views, in the web app's style: solid grey and black blocks on white, monospace, square corners.
 
     // The web app's monospace look. Bundled, as some phones replace the system monospace font.
     private val mono by lazy { resources.getFont(R.font.noto_sans_mono) }
@@ -198,10 +197,8 @@ class ReminderActivity : Activity() {
 
     private fun match() = LinearLayout.LayoutParams(-1, -2)
 
-    private fun border(fill: Int) = GradientDrawable().apply {
-        setColor(fill)
-        setStroke(dp(1).coerceAtLeast(1), Color.BLACK)
-    }
+    // The web app's --gap: blocks sit this far apart.
+    private val gap get() = dp(2)
 
     private fun label(text: String, sp: Float) = TextView(this).apply {
         this.text = text
@@ -216,7 +213,7 @@ class ReminderActivity : Activity() {
     }
 
     private fun TextView.boxed() = apply {
-        background = border(Color.WHITE)
+        setBackgroundColor(GREY)
         setPadding(dp(12), dp(8), dp(12), dp(8))
     }
 
@@ -225,24 +222,27 @@ class ReminderActivity : Activity() {
         minHeight = dp(88)
         if (primary) setTypeface(mono, Typeface.BOLD)
         setTextColor(if (primary) Color.WHITE else Color.BLACK)
-        background = border(if (primary) Color.BLACK else Color.WHITE)
+        setBackgroundColor(if (primary) Color.BLACK else GREY)
         isClickable = true
         isFocusable = true
     }
 
-    // Two cells side by side; the -1dp margins collapse their shared borders.
+    // Two cells side by side, a sliver of white apart, like the web app's rows.
     private fun row(a: View, b: View) = LinearLayout(this).apply {
         // Otherwise a one-line cell is shifted to line up with a two-line one's text.
         isBaselineAligned = false
         addView(a, LinearLayout.LayoutParams(0, -2, 1f))
-        addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = -dp(1) })
-        layoutParams = match().apply { topMargin = -dp(1) }
+        addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = gap })
+        layoutParams = match().apply { topMargin = gap }
     }
 
     companion object {
         private const val EXTRA_IDS = "ids"
         private const val EXTRA_AT = "at"
         private const val DOUBLE_TAP_MS = 300L
+        // The web app's --grey and --mute.
+        private const val GREY = 0xFFECECEC.toInt()
+        private const val MUTE = 0xFF666666.toInt()
 
         fun intent(ctx: Context, ids: List<String>, at: Long): Intent =
             Intent(ctx, ReminderActivity::class.java)
